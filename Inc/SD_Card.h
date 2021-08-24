@@ -128,6 +128,7 @@ typedef struct
     SPI_RegDef_t* pSPIx;              /*   Holds the base address SPIx  peripheral   */
     GPIO_Handle_t ChipSelHandle;      /*   Handler Chip select GPIOx                 */
     GPIO_Handle_t CardDetHandle;      /*   Handler Card Detect GPIOx                 */
+    gpio_pin_state_t CardDetPol;      /*   SD Card detect polarity                   */
     Timeout_t cmdTimeout;             /*   Timer Handler for Command Timeouts        */
 } SD_Handle_t;
 

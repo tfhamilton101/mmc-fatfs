@@ -1024,7 +1024,7 @@ card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
     GPIO_Handle_t cd = pSDHandle->CardDetHandle;
 
     // Active High Switch
-    if (GPIO_ReadFromInputPin(cd.pGPIOx, cd.GPIO_PinConfig.GPIO_PinNumber) == HIGH)
+    if (GPIO_ReadFromInputPin(cd.pGPIOx, cd.GPIO_PinConfig.GPIO_PinNumber) == pSDHandle->CardDetPol)
     {
         return CD_DETECTED;
     }
@@ -1045,7 +1045,7 @@ card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
  *
  *  @return             - None
  *
- *  @note               - 
+ *  @note               -
  */
 void SD_IRQHandling(SD_Handle_t* pSDHandle)
 {
