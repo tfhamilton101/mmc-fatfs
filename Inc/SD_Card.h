@@ -240,7 +240,7 @@ typedef enum
 #define SD_DEFAULT_BLOCK_SIZE (512)
 
 // The SD RX buffer size must be a Powers of 2 multiple of the default block side
-#define SD_BUFFER_SIZE (32 * SD_DEFAULT_BLOCK_SIZE)
+#define SD_BUFFER_SIZE (64 * SD_DEFAULT_BLOCK_SIZE)
 
 /************************************************************************************
  *			        		SD Command Macros
