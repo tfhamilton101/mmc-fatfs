@@ -5,6 +5,7 @@
  *      Author: thomashamilton
  */
 #include "Hexdump.h"
+#include "terminal.h"
 
 uint8_t DumpBuf[DUMP_BUF_SIZE] = {0};
 
@@ -13,7 +14,6 @@ uint8_t DumpBuf[DUMP_BUF_SIZE] = {0};
  *
  * 	@brief			     - Function to print blocks of memory to the console
  *
- * 	@param[pUSARTHandle] - Handler structure for USART
  * 	@param[pReadHandle]	 - Generic driver Handler for reading data
  * 	@param[blockRead]	 - Function pointer to sub read block function
  * 	@param[addr]		 - Memory address to print
@@ -23,7 +23,7 @@ uint8_t DumpBuf[DUMP_BUF_SIZE] = {0};
  *
  * 	@note
  */
-void Hexdump(USART_Handle_t* pUSARTHandle, void* pReadHandle, dumpInfo_t (*readBlock)(void*, uint32_t, uint32_t), uint32_t addr, uint32_t blocks)
+void Hexdump(void* pReadHandle, dumpInfo_t (*readBlock)(void*, uint32_t, uint32_t), uint32_t addr, uint32_t blocks)
 {
     char print_buf[24];
 
@@ -35,7 +35,7 @@ void Hexdump(USART_Handle_t* pUSARTHandle, void* pReadHandle, dumpInfo_t (*readB
 
     // Print the block address
     sprintf(print_buf, "\nBlock %ld (0x%08lX) \n", addr / dumpInfo.addrUnit, addr);
-    USART_PrintString(pUSARTHandle, print_buf);
+    Terminal_SendString(print_buf);
 
     uint32_t n = 0;
 
@@ -62,10 +62,10 @@ void Hexdump(USART_Handle_t* pUSARTHandle, void* pReadHandle, dumpInfo_t (*readB
 
         n += blocksRead;
 
-        HexdumpBuffer(pUSARTHandle, dumpInfo.pbuff, blocksRead * dumpInfo.blockSize);
+        HexdumpBuffer(dumpInfo.pbuff, blocksRead * dumpInfo.blockSize);
     }
 
-    USART_PrintString(pUSARTHandle, "\n");
+    Terminal_SendString("\n");
 }
 
 /****************************************************************************************
@@ -73,7 +73,6 @@ void Hexdump(USART_Handle_t* pUSARTHandle, void* pReadHandle, dumpInfo_t (*readB
  *
  * 	@brief			     - Function to print blocks of memory to the console
  *
- * 	@param[pUSARTHandle] - Handler structure for USART
  * 	@param[buf]		     - Buffer address to dump
  * 	@param[bufSize]		 - Size of buffer address
  *
@@ -81,7 +80,7 @@ void Hexdump(USART_Handle_t* pUSARTHandle, void* pReadHandle, dumpInfo_t (*readB
  *
  * 	@note
  */
-void HexdumpBuffer(USART_Handle_t* pUSARTHandle, uint8_t* buf, uint32_t bufSize)
+void HexdumpBuffer(uint8_t* buf, uint32_t bufSize)
 {
     uint32_t byte_index;
     uint32_t offset_count = 0;
@@ -100,8 +99,8 @@ void HexdumpBuffer(USART_Handle_t* pUSARTHandle, uint8_t* buf, uint32_t bufSize)
             strcat(print_buf, "  ");
 
             // Print address with 8 hex characters
-            USART_PrintString(pUSARTHandle, "\n");
-            USART_PrintString(pUSARTHandle, print_buf);
+            Terminal_SendString("\n");
+            Terminal_SendString(print_buf);
 
             // Increment the offset count
             offset_count++;
@@ -111,7 +110,7 @@ void HexdumpBuffer(USART_Handle_t* pUSARTHandle, uint8_t* buf, uint32_t bufSize)
         // Every 8 bytes send an extra space
         if ((byte_index % 16) == 8)
         {
-            USART_PrintString(pUSARTHandle, " ");
+            Terminal_SendString(" ");
         }
 
         // Print each byte in hex
@@ -119,7 +118,7 @@ void HexdumpBuffer(USART_Handle_t* pUSARTHandle, uint8_t* buf, uint32_t bufSize)
         strcat(print_buf, " ");
 
         // Print data with 2 hex characters
-        USART_PrintString(pUSARTHandle, print_buf);
+        Terminal_SendString(print_buf);
 
         // bump the data pointer
         pdata++;
@@ -128,28 +127,28 @@ void HexdumpBuffer(USART_Handle_t* pUSARTHandle, uint8_t* buf, uint32_t bufSize)
         if ((byte_index % 16) == 15)
         {
             uint8_t bytecount;
-            USART_PrintString(pUSARTHandle, " |");
+            Terminal_SendString(" |");
 
             for (bytecount = 0; bytecount < 16; bytecount++)
             {
                 // Print non readable characters as a dot
                 if ((*currLine < ' ') || (*currLine > '~'))
                 {
-                    USART_PrintString(pUSARTHandle, ".");
+                    Terminal_SendString(".");
                 }
                 else
                 {
-                    USART_SendData(pUSARTHandle, currLine, 1);
+                    Terminal_SendData(currLine, 1);
                 }
 
                 currLine++;
             }
 
-            USART_PrintString(pUSARTHandle, "|");
+            Terminal_SendString("|");
         }
     }
 
-    USART_PrintString(pUSARTHandle, "\n");
+    Terminal_SendString("\n");
 }
 
 /***********************************************************

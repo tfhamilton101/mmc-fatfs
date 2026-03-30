@@ -32,8 +32,8 @@ typedef struct
 /************************************************************************************
  *                            Function Declarations                                 *
  ************************************************************************************/
-void Hexdump(USART_Handle_t* pUSARTHandle, void* pReadHandle, dumpInfo_t (*readBlock)(void*, uint32_t, uint32_t), uint32_t addr, uint32_t sectors);
-void HexdumpBuffer(USART_Handle_t* pUSARTHandle, uint8_t* buf, uint32_t bufSize);
+void Hexdump(void* pReadHandle, dumpInfo_t (*readBlock)(void*, uint32_t, uint32_t), uint32_t addr, uint32_t sectors);
+void HexdumpBuffer(uint8_t* buf, uint32_t bufSize);
 
 // Sub Functions
 dumpInfo_t FATdump(void* handle, uint32_t addr, uint32_t blocks);
