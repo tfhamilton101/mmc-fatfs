@@ -71,7 +71,7 @@ void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type)
 /****************************************************************************************
  *  @fn                 - SD_Init_Timers
  *
- *  @brief              - This function initializes TIM2 for SD command timeouts
+ *  @brief              - This function initializes TIM for SD command timeouts
  *
  *  @param[pSDHandle]   - Handler structure for SD Card
  *  @param[pTIMx]       - base address of the TIM peripheral
@@ -96,7 +96,7 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx)
     // Store in the SD Handler
     pSDHandle->cmdTimeout.TimHandle = TIMHandle;
 
-    // Configure TIM2
+    // Configure TIM
     TIM_Init(&TIMHandle);
 
     // Set Auto reload value & Prescaler
@@ -107,11 +107,11 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx)
     // Enable TIMx interrupt
     TIM_DIERConfig(SD_TIMEOUT_TIMER, TIM_DIER_UIE, ENABLE);
 
-    // Configure TIM2 priority
-    TIM_IRQPriorityConfig(IRQ_NO_TIM2, NVIC_IRQ_PRI12);
+    // Configure TIM priority
+    TIM_IRQPriorityConfig(IRQ_NO_TIM3, NVIC_IRQ_PRI12);
 
-    // Configure TIM2 IRQ
-    TIM_IRQInterruptConfig(IRQ_NO_TIM2, ENABLE);
+    // Configure TIM IRQ
+    TIM_IRQInterruptConfig(IRQ_NO_TIM3, ENABLE);
 }
 
 /****************************************************************************************
