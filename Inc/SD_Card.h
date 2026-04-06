@@ -379,7 +379,7 @@ typedef enum
 #define SD_TIMEOUT_PRESCALE 152
 
 // Timer peripheral for Command Timeout
-#define SD_TIMEOUT_TIMER TIM2
+#define SD_TIMEOUT_TIMER TIM3
 
 /************************************************************************************
  *                              Public Functions
