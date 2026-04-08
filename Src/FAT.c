@@ -683,7 +683,7 @@ fat_fwrite_t FAT_updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 
     // TODO: Remove these debug
 #if defined(FAT_DEBUG_GENERIC)
-    HexdumpBuffer(&USART2_t, entryBlock + file->DirEntryOffset, DIR_BYTES_PER_ENTRY);
+    HexdumpBuffer(entryBlock + file->DirEntryOffset, DIR_BYTES_PER_ENTRY);
 #endif
 
     if (file->FileSize == ToLittleEndian(entryfileSize, FILE_SIZE_SIZE))
@@ -695,7 +695,7 @@ fat_fwrite_t FAT_updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
     ToEndianBuf(entryfileSize, file->FileSize, DATA_SIZE_WORD);
 
 #if defined(FAT_DEBUG_GENERIC)
-    HexdumpBuffer(&USART2_t, entryBlock + file->DirEntryOffset, DIR_BYTES_PER_ENTRY);
+    HexdumpBuffer(entryBlock + file->DirEntryOffset, DIR_BYTES_PER_ENTRY);
 #endif
 
     // Write updates to the Directory block
@@ -828,7 +828,7 @@ fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* f
             cmdStatus = SD_WriteBlock(pFAT->pSDHandle, file->DirEntryBaseAddr, 1);
 #else
             // Debug the new entry
-            HexdumpBuffer(&USART2_t, SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo.BytesPerSector);
+            HexdumpBuffer(SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo.BytesPerSector);
 #endif
             // Reset the directory entry
             file->DirEntryOffset = 0;
@@ -884,7 +884,7 @@ fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* f
     cmdStatus = SD_WriteBlock(pFAT->pSDHandle, file->DirEntryBaseAddr, writeCount);
 #else
     // Debug the new entry
-    HexdumpBuffer(&USART2_t, SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo.BytesPerSector * writeCount);
+    HexdumpBuffer(SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo.BytesPerSector * writeCount);
 #endif
 
     return (cmdStatus == SD_READ_WRITE_FAIL) ? FOPEN_FAIL : FOPEN_SUCCESS;
@@ -1872,7 +1872,7 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
     sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterLoc.baseAddr, 1);
 
 #if defined(FAT_DEBUG_TABLE)
-    HexdumpBuffer(&USART2_t, fatBlock, pFAT->SystemInfo.BytesPerSector);
+    HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector);
 #endif
 
     // Error Handling
@@ -1898,13 +1898,13 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
     else
     {
 #if defined(FAT_DEBUG_TABLE)
-        HexdumpBuffer(&USART2_t, fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
+        HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
 #endif
 
         // Update first ClusterID
         ToEndianBuf(fatBlock + clusterLoc.offset, nextID, clusterIdSize);
 #if defined(FAT_DEBUG_TABLE)
-        HexdumpBuffer(&USART2_t, fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
+        HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
 #else
         // Write the FAT Block
         cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterLoc.baseAddr, 1);
@@ -1916,7 +1916,7 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
         ToEndianBuf(fatBlock + nextLoc.offset, FAT_EOF_MARKER_GENERIC, clusterIdSize);
 
 #if defined(FAT_DEBUG_TABLE)
-        HexdumpBuffer(&USART2_t, fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
+        HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
 #else
         // Write the FAT Block
         cmdStatus = SD_WriteBlock(pFAT->pSDHandle, nextLoc.baseAddr, 1);
@@ -1924,7 +1924,7 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
     }
 
 #if defined(FAT_DEBUG_TABLE)
-    HexdumpBuffer(&USART2_t, fatBlock, pFAT->SystemInfo.BytesPerSector);
+    HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector);
 #endif
 
     // Error Handling
