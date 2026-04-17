@@ -83,122 +83,119 @@ void FAT_GetSystemInfo(FAT_Handle_t* pFAT)
     if (SD_IsReady(pFAT->pSDHandle) == false)
     {
         pFAT->FAT_Stat = INIT_FAT_FAIL;
+        return;
+    }
+
+    System_info_t* SystemInfo = &pFAT->SystemInfo;
+    uint8_t* buff = SD_GetBuffAddr(pFAT->pSDHandle);
+
+    /******************		  Read Master Boot Record (MBR) 	   **************/
+    /* The MBR is the first sector of the drive. This sector contains boot code *
+        * and a partition table. The contents of a FAT file system are located in  *
+        * the first partition. In the partition description, We only care about    *
+        * the logical block address (LBA) and the	partition type 					*/
+
+    sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, 0, 1);
+
+    if (cmdStatus == SD_READ_WRITE_FAIL)
+    {
+        pFAT->FAT_Stat = INIT_CMD_FAIL;
+        return;
+    }
+
+    /* First find the start of the the File system */
+    uint32_t LogicalBlockAddress = ToLittleEndian(&buff[MBR_LBA], DATA_SIZE_WORD);
+
+    uint8_t typeCode = buff[MBR_TYPE_CODE];
+
+    /* Check Partition Type */
+    if (typeCode == MBR_TYPE_CODE_FAT16)
+    {
+        SystemInfo->FAT_Type = FAT_TYPE_FAT16;
+    }
+    else if (typeCode == MBR_TYPE_CODE_FAT32_A || typeCode == MBR_TYPE_CODE_FAT32_B)
+    {
+        SystemInfo->FAT_Type = FAT_TYPE_FAT32;
     }
     else
     {
-        System_info_t* SystemInfo = &pFAT->SystemInfo;
-        uint8_t* buff = SD_GetBuffAddr(pFAT->pSDHandle);
-        uint32_t LogicalBlockAddress;
-        sd_read_write_t cmdStatus = SD_READ_WRITE_FAIL;
-
-        /******************		  Read Master Boot Record (MBR) 	   **************/
-        /* The MBR is the first sector of the drive. This sector contains boot code *
-		 * and a partition table. The contents of a FAT file system are located in  *
-		 * the first partition. In the partition description, We only care about    *
-		 * the logical block address (LBA) and the	partition type 					*/
-
-        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, 0, 1);
-
-        if (cmdStatus == SD_READ_WRITE_FAIL)
-        {
-            pFAT->FAT_Stat = INIT_CMD_FAIL;
-            return;
-        }
-
-        /* First find the start of the the File system */
-        LogicalBlockAddress = ToLittleEndian(&buff[MBR_LBA], DATA_SIZE_WORD);
-
-        uint8_t typeCode = buff[MBR_TYPE_CODE];
-
-        /* Check Partition Type */
-        if (typeCode == MBR_TYPE_CODE_FAT16)
-        {
-            SystemInfo->FAT_Type = FAT_TYPE_FAT16;
-        }
-        else if (typeCode == MBR_TYPE_CODE_FAT32_A || typeCode == MBR_TYPE_CODE_FAT32_B)
-        {
-            SystemInfo->FAT_Type = FAT_TYPE_FAT32;
-        }
-        else
-        {
-            pFAT->FAT_Stat = INIT_NO_FAT;
-            return;
-        }
-
-        if (ToLittleEndian(&buff[MBR_END_MARKER], DATA_SIZE_HALF_WORD) != BOOT_SIGNATURE)
-        {
-            pFAT->FAT_Stat = INIT_BAD_END_MARKER;
-            return;
-        }
-
-        /******************	 Parse out parameters from Boot Block	 ****************/
-        uint32_t reservedSectors;
-        uint32_t bootBlockAddr;
-
-        // FAT16 uses a byte address scheme, while FAT32 block address
-        if (getFatType(pFAT) == FAT_TYPE_FAT16)
-        {
-            bootBlockAddr = LogicalBlockAddress * SD_DEFAULT_BLOCK_SIZE;
-        }
-        else if (getFatType(pFAT) == FAT_TYPE_FAT32)
-        {
-            bootBlockAddr = LogicalBlockAddress;
-        }
-
-        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, bootBlockAddr, 1);
-
-        if (cmdStatus == SD_READ_WRITE_FAIL)
-        {
-            pFAT->FAT_Stat = INIT_CMD_FAIL;
-            return;
-        }
-
-        SystemInfo->BytesPerSector = ToLittleEndian(&buff[BOOT_BLK_BYTES_PER_SEC], DATA_SIZE_HALF_WORD);
-        reservedSectors = ToLittleEndian(&buff[BOOT_BLK_RESERVED_SECT], DATA_SIZE_HALF_WORD);
-        SystemInfo->SectorsPerCluster = (uint32_t)buff[BOOT_BLK_SEC_PER_CLUSTER];
-        SystemInfo->FAT_Copies = (uint32_t)buff[BOOT_BLK_NUM_FATS];
-        SystemInfo->RootDirEntries = ToLittleEndian(&buff[BOOT_BLK_NUM_ROOT_ENTRIES], DATA_SIZE_HALF_WORD);
-        SystemInfo->SectorsPerVolume = ToLittleEndian(&buff[BOOT_BLK_TOTAL_VOLUME_BLOCKS], DATA_SIZE_WORD);
-
-        // Sectors Per FAT
-        if (getFatType(pFAT) == FAT_TYPE_FAT16)
-        {
-            SystemInfo->SectorsPerFAT = ToLittleEndian(&buff[BOOT_BLK_SECTORS_PER_TABLE_FAT16], DATA_SIZE_HALF_WORD);
-        }
-        else if (getFatType(pFAT) == FAT_TYPE_FAT32)
-        {
-            SystemInfo->SectorsPerFAT = ToLittleEndian(&buff[BOOT_BLK_SECTORS_PER_TABLE_FAT32], DATA_SIZE_HALF_WORD);
-        }
-
-        uint32_t addrUnit = getFatAddrUnit(pFAT);
-
-        /**********   Calculate the addresses of FATs and Root directory   **********/
-        SystemInfo->FAT1_Address = bootBlockAddr + (reservedSectors * addrUnit);
-        SystemInfo->FAT2_Address = SystemInfo->FAT1_Address + (SystemInfo->SectorsPerFAT * addrUnit);
-        SystemInfo->RootDirAddress = bootBlockAddr + (reservedSectors * addrUnit + SystemInfo->SectorsPerFAT * addrUnit * SystemInfo->FAT_Copies);
-        /* Data Starting address (Cluster 2) */
-        SystemInfo->DataStartAddress = SystemInfo->RootDirAddress + (SystemInfo->RootDirEntries * DIR_BYTES_PER_ENTRY);
-
-        /*  The boot sector has an entry reserved for the Volume label. However, Microsoft ignored their own recommendation and
-		 *  leaves the field set to the string “NO NAME ”, which is the default for when the volume label has not been set.*/
-        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, SystemInfo->RootDirAddress, 1);
-
-        if (cmdStatus == SD_READ_WRITE_FAIL)
-        {
-            pFAT->FAT_Stat = INIT_CMD_FAIL;
-            return;
-        }
-
-        /* Instead we will get the volume label from the first in the root directory. This is a special item just for this. */
-        strncpy((char*)SystemInfo->VolumeLabel, (char*)(buff + FILENAME), VOLUME_LABEL_SIZE);
-        RemoveSpacePadding(SystemInfo->VolumeLabel, VOLUME_LABEL_SIZE);
-
-        /* Update the FAT Handler Status */
-        pFAT->FAT_Stat = INIT_FAT_SUCCESS;
-
-        /* Re-init the FAT to the root dir and set working dir */
-        FAT_GoToRootDir(pFAT);
+        pFAT->FAT_Stat = INIT_NO_FAT;
+        return;
     }
+
+    if (ToLittleEndian(&buff[MBR_END_MARKER], DATA_SIZE_HALF_WORD) != BOOT_SIGNATURE)
+    {
+        pFAT->FAT_Stat = INIT_BAD_END_MARKER;
+        return;
+    }
+
+    /******************	 Parse out parameters from Boot Block	 ****************/
+    uint32_t reservedSectors;
+    uint32_t bootBlockAddr;
+
+    // FAT16 uses a byte address scheme, while FAT32 block address
+    if (getFatType(pFAT) == FAT_TYPE_FAT16)
+    {
+        bootBlockAddr = LogicalBlockAddress * SD_DEFAULT_BLOCK_SIZE;
+    }
+    else if (getFatType(pFAT) == FAT_TYPE_FAT32)
+    {
+        bootBlockAddr = LogicalBlockAddress;
+    }
+
+    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, bootBlockAddr, 1);
+
+    if (cmdStatus == SD_READ_WRITE_FAIL)
+    {
+        pFAT->FAT_Stat = INIT_CMD_FAIL;
+        return;
+    }
+
+    SystemInfo->BytesPerSector = ToLittleEndian(&buff[BOOT_BLK_BYTES_PER_SEC], DATA_SIZE_HALF_WORD);
+    reservedSectors = ToLittleEndian(&buff[BOOT_BLK_RESERVED_SECT], DATA_SIZE_HALF_WORD);
+    SystemInfo->SectorsPerCluster = (uint32_t)buff[BOOT_BLK_SEC_PER_CLUSTER];
+    SystemInfo->FAT_Copies = (uint32_t)buff[BOOT_BLK_NUM_FATS];
+    SystemInfo->RootDirEntries = ToLittleEndian(&buff[BOOT_BLK_NUM_ROOT_ENTRIES], DATA_SIZE_HALF_WORD);
+    SystemInfo->SectorsPerVolume = ToLittleEndian(&buff[BOOT_BLK_TOTAL_VOLUME_BLOCKS], DATA_SIZE_WORD);
+
+    // Sectors Per FAT
+    if (getFatType(pFAT) == FAT_TYPE_FAT16)
+    {
+        SystemInfo->SectorsPerFAT = ToLittleEndian(&buff[BOOT_BLK_SECTORS_PER_TABLE_FAT16], DATA_SIZE_HALF_WORD);
+    }
+    else if (getFatType(pFAT) == FAT_TYPE_FAT32)
+    {
+        SystemInfo->SectorsPerFAT = ToLittleEndian(&buff[BOOT_BLK_SECTORS_PER_TABLE_FAT32], DATA_SIZE_HALF_WORD);
+    }
+
+    uint32_t addrUnit = getFatAddrUnit(pFAT);
+
+    /**********   Calculate the addresses of FATs and Root directory   **********/
+    SystemInfo->FAT1_Address = bootBlockAddr + (reservedSectors * addrUnit);
+    SystemInfo->FAT2_Address = SystemInfo->FAT1_Address + (SystemInfo->SectorsPerFAT * addrUnit);
+    SystemInfo->RootDirAddress = bootBlockAddr + (reservedSectors * addrUnit + SystemInfo->SectorsPerFAT * addrUnit * SystemInfo->FAT_Copies);
+    /* Data Starting address (Cluster 2) */
+    SystemInfo->DataStartAddress = SystemInfo->RootDirAddress + (SystemInfo->RootDirEntries * DIR_BYTES_PER_ENTRY);
+
+    /*  The boot sector has an entry reserved for the Volume label. However, Microsoft ignored their own recommendation and
+        *  leaves the field set to the string “NO NAME ”, which is the default for when the volume label has not been set.*/
+    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, SystemInfo->RootDirAddress, 1);
+
+    if (cmdStatus == SD_READ_WRITE_FAIL)
+    {
+        pFAT->FAT_Stat = INIT_CMD_FAIL;
+        return;
+    }
+
+    /* Instead we will get the volume label from the first in the root directory. This is a special item just for this. */
+    strncpy((char*)SystemInfo->VolumeLabel, (char*)(buff + FILENAME), VOLUME_LABEL_SIZE);
+    RemoveSpacePadding(SystemInfo->VolumeLabel, VOLUME_LABEL_SIZE);
+
+    /* Update the FAT Handler Status */
+    pFAT->FAT_Stat = INIT_FAT_SUCCESS;
+
+    /* Re-init the FAT to the root dir and set working dir */
+    FAT_GoToRootDir(pFAT);
 }
 
 /****************************************************************************************
