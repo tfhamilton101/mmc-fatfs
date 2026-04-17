@@ -468,9 +468,7 @@ fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* f
 
 /* FAT File Attribute Functions */
 bool FAT_FileFlagStatus(file_entry_t* file, FAT_file_flags_t flag);
-bool FAT_isEndOfDir(file_entry_t* file);
 bool FAT_isHiddenFile(file_entry_t* file);
-bool FAT_isLongFile(file_entry_t* file);
 
 /* Other Functions */
 uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);

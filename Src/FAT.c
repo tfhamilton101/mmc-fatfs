@@ -39,6 +39,9 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
 static fat_fload_t FAT_traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 static fat_fload_t FAT_loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
 
+static bool isEndOfDir(file_entry_t* file);
+static bool isLongFile(file_entry_t* file);
+
 /****************************************************************************************
  *	@fn 			     - InitFAT
  *
@@ -256,7 +259,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file)
     file->FileAttribute = *(entryAddr + currAddr.offset + FILE_ATTRIBUTE);
 
     // Processing a short file name
-    if (!FAT_isLongFile(file))
+    if (!isLongFile(file))
     {
         // Clear the file name incase of previous scans
         memset(file->Filename, 0, FILENAME_SIZE + 1);
@@ -420,7 +423,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file)
     // Update the working directory info
     FAT_SetWorkingAddr(pFAT, currAddr.baseAddr, currAddr.offset);
 
-    return !FAT_isEndOfDir(file);
+    return !isEndOfDir(file);
 }
 
 /****************************************************************************************
@@ -1454,7 +1457,7 @@ bool FAT_FileFlagStatus(file_entry_t* file, FAT_file_flags_t flag)
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_isHiddenFile
+ *	@fn 			     - isHiddenFile
  *
  * 	@brief			     - Determine whether file is valid
  *
@@ -1469,7 +1472,7 @@ bool FAT_isHiddenFile(file_entry_t* file)
 }
 
 /****************************************************************************************
- *  @fn                  - FAT_isEndOfDir
+ *  @fn                  - isEndOfDir
  *
  *  @brief               - Determine whether file is valid
  *
@@ -1478,13 +1481,13 @@ bool FAT_isHiddenFile(file_entry_t* file)
  *  @return              - True or False
  *    
  */
-bool FAT_isEndOfDir(file_entry_t* file)
+static bool isEndOfDir(file_entry_t* file)
 {
     return file->Filename[0] == END_OF_DIRECTORY;
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_isLongFile
+ *	@fn 			     - isLongFile
  *
  * 	@brief			     - Determine whether file is valid
  *
@@ -1493,7 +1496,7 @@ bool FAT_isEndOfDir(file_entry_t* file)
  * 	@return			     - True or False
  *
  */
-bool FAT_isLongFile(file_entry_t* file)
+static bool isLongFile(file_entry_t* file)
 {
     return file->FileAttribute == FILE_FLAG_LFN;
 }
