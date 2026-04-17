@@ -551,14 +551,13 @@ Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t*
     {
         return FILESEARCH_FOUND;
     }
-    else if (searchStatus == FILESEARCH_FAIL)
+
+    if (searchStatus == FILESEARCH_FAIL)
     {
         return FILESEARCH_FAIL;
     }
-    else
-    {
-        return FILESEARCH_NOT_FOUND;
-    }
+
+    return FILESEARCH_NOT_FOUND;
 }
 
 /****************************************************************************************
