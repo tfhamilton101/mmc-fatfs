@@ -1012,10 +1012,8 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     {
         return FOPEN_SUCCESS;
     }
-    else
-    {
-        return FOPEN_FAIL;
-    }
+
+    return FOPEN_FAIL;
 }
 
 /****************************************************************************************
