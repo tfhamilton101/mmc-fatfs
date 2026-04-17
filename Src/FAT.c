@@ -28,6 +28,8 @@ static void RemoveSpacePadding(uint8_t* text, uint8_t fieldSize);
 static uint8_t parseFilename(char* FullName, uint8_t* Filename, uint8_t* FileExt);
 static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename);
 
+static fat_fload_t loadNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
+
 static void FAT_SetCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
@@ -1005,7 +1007,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
 
     // Load Up the NodesQueue
-    loadStatus = FAT_fload(pFAT, file, mode);
+    loadStatus = loadNodesQueue(pFAT, file, mode);
 
     // Return Types
     if ((loadStatus == FLOAD_EOF_FOUND) || (loadStatus == FLOAD_EOF_NOT_FOUND))
@@ -1017,7 +1019,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_fload
+ *	@fn 			     - loadNodesQueue
  *
  * 	@brief			     - Read from the FAT table and load up the nodes queue
  *
@@ -1027,7 +1029,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
  * 	@return			     - Search status
  *
  */
-fat_fload_t FAT_fload(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
+fat_fload_t loadNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
 {
     // Defining a local variable so the following statements are shorter.
     NodesQueue* pNodesQueue = &file->NodesQueue;
@@ -1231,7 +1233,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file)
         // If the queue is empty but the EOF is not found, we need to reload the queue
         if (isQueueEmpty(&pNodesQueue->Info) && !isEndofFatEntry(pFAT, pNodesQueue->Tail))
         {
-            fat_fload_t loadStatus = FAT_fload(pFAT, file, FILE_MODE_READ);
+            fat_fload_t loadStatus = loadNodesQueue(pFAT, file, FILE_MODE_READ);
 
             // fload writes over the block buffer, so we need to re-read the current block.
             cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer);

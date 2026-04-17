@@ -443,7 +443,6 @@ void FAT_GetSystemInfo(FAT_Handle_t* pFAT);
 
 /* File Read / Write functions */
 fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, file_mode_t mode);
-fat_fload_t FAT_fload(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
 fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file);
 fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file);
 void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
