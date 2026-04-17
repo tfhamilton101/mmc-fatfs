@@ -459,10 +459,7 @@ void FAT_GoToRootDir(FAT_Handle_t* pFAT);
 
 /* FAT Directory / File Searching Functions */
 bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file);
-Search_Status_t FAT_FindFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
 Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
-Search_Status_t FAT_SearchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
-fat_fwrite_t FAT_updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 // Create new file
 fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 

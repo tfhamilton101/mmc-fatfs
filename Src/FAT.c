@@ -42,6 +42,10 @@ static fat_fload_t FAT_loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodes
 static bool isEndOfDir(file_entry_t* file);
 static bool isLongFile(file_entry_t* file);
 
+static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
+static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
+static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
+
 /****************************************************************************************
  *	@fn 			     - InitFAT
  *
@@ -427,7 +431,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file)
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_FindFile
+ *	@fn 			     - findFile
  *
  * 	@brief			     - Parse a file information from a directory
  *
@@ -439,7 +443,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file)
  * 	@return			     - Search status
  *
  */
-Search_Status_t FAT_FindFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
+static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
 {
     uint32_t addrQueueBuf[MAX_DIRECTORIES];
     uint16_t entriesPerDir = MAX_ENTIRES_PER_DIRECTORY;
@@ -550,7 +554,7 @@ Search_Status_t FAT_FindFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t
 Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
 {
     // Search for file
-    Search_Status_t searchStatus = FAT_FindFile(pFAT, fileName, file, mode);
+    Search_Status_t searchStatus = findFile(pFAT, fileName, file, mode);
 
     if (searchStatus == FILESEARCH_FOUND && FAT_FileFlagStatus(file, FILE_FLAG_DIRECTORY))
     {
@@ -566,7 +570,7 @@ Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t*
 }
 
 /****************************************************************************************
- *	@fn                  - FAT_SearchPath
+ *	@fn                  - searchPath
  *
  * 	@brief               - Search for a file in a given path
  *
@@ -577,7 +581,7 @@ Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t*
  * 	@return	             - Search status
  *
  */
-Search_Status_t FAT_SearchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
+static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 {
     uint8_t n, delimeterLoc;
     uint8_t tempBuf[FILENAME_MAX_SIZE + 1];
@@ -635,7 +639,7 @@ Search_Status_t FAT_SearchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry
         tempBuf[n - delimeterLoc] = '\0';
 
         // Search for the file
-        if (FAT_FindFile(pFAT, tempBuf, file, SEARCH_FILE_LOCAL) != FILESEARCH_FOUND)
+        if (findFile(pFAT, tempBuf, file, SEARCH_FILE_LOCAL) != FILESEARCH_FOUND)
         {
             // Fail, go back to original directory
             FAT_SetWorkingDir(pFAT, currDir);
@@ -649,7 +653,7 @@ Search_Status_t FAT_SearchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry
 }
 
 /****************************************************************************************
- *  @fn                  - FAT_updateDirEntry
+ *  @fn                  - updateDirEntry
  *
  *  @brief               - Update a directory entry after a fwrite
  *
@@ -660,7 +664,7 @@ Search_Status_t FAT_SearchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry
  *                 * // TODO: updateFileSize
  *
  */
-fat_fwrite_t FAT_updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
+static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 {
     // Confirm the current file is being closed
     if ((pFAT->CurrFile != file) || (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW))
@@ -720,7 +724,7 @@ fat_fwrite_t FAT_updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 {
     // Search for the file
-    Search_Status_t searchStat = FAT_SearchPath(pFAT, fileName, file);
+    Search_Status_t searchStat = searchPath(pFAT, fileName, file);
 
     // Report error if the file already exists or the directory does not
     if ((searchStat == FILESEARCH_FOUND) || (searchStat == FILESEARCH_DIR_NOT_FOUND))
@@ -986,7 +990,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     }
 
     // Search for the file
-    if (FAT_SearchPath(pFAT, fileName, file) != FILESEARCH_FOUND)
+    if (searchPath(pFAT, fileName, file) != FILESEARCH_FOUND)
     {
         return FOPEN_NOT_FOUND;
     }
@@ -1130,7 +1134,7 @@ void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
     if (file->mode == FILE_MODE_WRITE || file->mode == FILE_MODE_WRITE_NEW)
     {
         // Update directory entry
-        FAT_updateDirEntry(pFAT, file);
+        updateDirEntry(pFAT, file);
     }
     else
     {
