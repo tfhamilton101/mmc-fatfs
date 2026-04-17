@@ -13,6 +13,122 @@ extern USART_Handle_t USART2_t;
 #include "stm32f407xx_usart_driver.h"
 #endif
 
+/************************************************************************************
+ *                          Typedefs                                                *
+ ************************************************************************************/
+
+
+/**************************************************
+ *           Traverse FAT Table Define            *
+ **************************************************/
+typedef enum
+{
+    FAT_TRAVERSE_LOAD_QUEUE = 0,
+    FAT_TRAVERSE_FIND_LAST_ID,
+} fat_traverse_mode_t;
+
+/************************************************************************************
+ *							FAT Offset Macros										*
+ ************************************************************************************/
+
+/*** Partition Type Code Macros  ***/
+typedef enum
+{
+    MBR_TYPE_CODE_FAT32_A = 0x0B,
+    MBR_TYPE_CODE_FAT32_B = 0x0C,
+    MBR_TYPE_CODE_FAT16 = 0x0E,
+} mbr_type_code_t;
+
+
+/**** 	Offset Macros for Boot Sector 	****/
+typedef enum
+{
+    /*** FAT16 Specific ***/
+    BOOT_BLK_BYTES_PER_SEC = 0x0B,
+    BOOT_BLK_SEC_PER_CLUSTER = 0x0D,
+    BOOT_BLK_RESERVED_SECT = 0x0E,
+    BOOT_BLK_NUM_FATS = 0x10,
+    BOOT_BLK_NUM_ROOT_ENTRIES = 0x11,
+    BOOT_BLK_SECTORS_PER_TABLE_FAT16 = 0x16,
+    BOOT_BLK_TOTAL_VOLUME_BLOCKS = 0x20,
+    BOOT_BLK_FILE_SYS_TYPE_FAT16 = 0x36,
+    /*** FAT32 Specific ***/
+    BOOT_BLK_ROOT_DIR_CLUSTER_FAT32 = 0x2C,
+    BOOT_BLK_SECTORS_PER_TABLE_FAT32 = 0x24,
+    BOOT_BLK_FILE_SYS_TYPE_FAT32 = 0x52,
+} boot_block_offsets_t;
+
+#define BOOT_SIGNATURE 0xAA55
+
+/************************************************************************************
+ *						File Allocation Table Macros								*
+ ************************************************************************************/
+
+/**************************************************************************************
+ * An queue is used to hold the clusterIDs that make a file. This is read from the FAT.
+ * The size of the queue should be chosen such that most files can fit fully into the queue.
+ * This will prevent the program from going back and reading the FAT mid way through a file.
+ *
+ * 						FAT16 								FAT32
+ * 	  ------------------------------------------------------------------------------
+ * 	  | Volume Size	  |	 Windows Default	|| Volume Size	 |	Windows Default	   |
+ * 	  ------------------------------------------------------------------------------
+ * 	  | 512 MB – 1 GB | 16KB ( 32 sectors)  || 256 MB – 8GB  |	 4KB (  8 sectors) |
+ * 	  |   1 GB – 2 GB | 32KB ( 64 sectors)  ||    8GB – 16GB |	 8KB ( 16 sectors) |
+ * 	  |   2 GB – 4 GB | 64KB ( 128 sectors) ||   16GB – 32GB |	16KB ( 32 sectors) |
+ * 	  ------------------------------------------------------------------------------
+ *
+ *   Using the smallest cluster size (8 sectors) a queue size of 4096
+ *   will allow a 16MB ( 4096 * 8 * 512 ) minimum file to fit in the queue.
+ *
+ * 	  -----------------------------------------------
+ * 	  |  File Size  |	 FAT16	    |	 FAT32	    |
+ * 	  -----------------------------------------------
+ * 	  |     Min   	|	  67MB      |	  16MB      |
+ * 	  |     Max  	|	 134MB      |	  67MB      |
+ * 	  -----------------------------------------------
+ *
+ *************************************************************************************/
+
+/*
+ *  Structure to define FAT queue
+ */
+typedef enum
+{
+    FAT_QUEUE_MAX_CLUSTERS = 4096,
+    NODES_QUEUE_TAIL_INIT = 0,
+} FAT_Queue_t;
+
+/*
+ *  Structure to for FAT processing
+ */
+typedef struct
+{
+    uint32_t ClusterID;
+    uint32_t ContBlocks;
+} FAT_Queue_data_t;
+
+typedef enum
+{
+    FAT_FREE_ID_MARKER = 0x0000,
+    FAT_EOF_MARKER_FAT16 = 0xFFF8,
+    // FAT32 Max cluster: 2^28
+    FAT_EOF_MARKER_FAT32 = 0xFFFFFF8,
+    // Used for both FAT16 & FAT32 Table Updates
+    FAT_EOF_MARKER_GENERIC = 0xFFFFFFF,
+} fat_table_markers_t;
+
+
+// Fload Return type
+typedef enum
+{
+    FLOAD_FAIL = 0,
+    FLOAD_NOP,
+    FLOAD_EOF_NOT_FOUND,
+    FLOAD_EOF_FOUND,
+} fat_fload_t;
+
+
 /***************************************************
  * 				Global Variables    			   *
  ***************************************************/
@@ -38,10 +154,13 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
 static fat_fload_t FAT_traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 static fat_fload_t FAT_loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
+static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT);
 
 static bool isEndOfDir(file_entry_t* file);
 static bool isLongFile(file_entry_t* file);
 
+// Create new file
+static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
 static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
@@ -223,7 +342,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file)
     // These local variables are used to make function statements shorter
     uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
     uint8_t* entryAddr = SD_GetBuffAddr(pFAT->pSDHandle);
-    WorkingAddr_t currAddr = FAT_GetWorkingAddr(pFAT);
+    WorkingAddr_t currAddr = getWorkingAddr(pFAT);
     sd_read_write_t cmdStatus = SD_READ_WRITE_FAIL;
 
     // Read new block if necessary
@@ -710,7 +829,7 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 }
 
 /****************************************************************************************
- *  @fn                  - FAT_createFile
+ *  @fn                  - createFile
  *
  *  @brief               - Create a file
  *
@@ -721,7 +840,7 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
  * 
  *                       -
  */
-fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
+static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 {
     // Search for the file
     Search_Status_t searchStat = searchPath(pFAT, fileName, file);
@@ -983,7 +1102,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     // This mode creates a new file if it does not exist
     if (mode == FILE_MODE_WRITE_NEW)
     {
-        if (FAT_createFile(pFAT, fileName, file) != FOPEN_SUCCESS)
+        if (createFile(pFAT, fileName, file) != FOPEN_SUCCESS)
         {
             return FOPEN_FAIL;
         }
@@ -1535,7 +1654,7 @@ void FAT_SetWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offse
  *
  * 	@note
  */
-WorkingAddr_t FAT_GetWorkingAddr(FAT_Handle_t* pFAT)
+static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT)
 {
     return pFAT->WorkingAddr;
 }
@@ -1780,7 +1899,7 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
     // Check if we need to update our working address
-    if (FAT_GetWorkingAddr(pFAT).baseAddr != clusterLoc.baseAddr)
+    if (getWorkingAddr(pFAT).baseAddr != clusterLoc.baseAddr)
     {
         // Update current working address
         FAT_SetWorkingAddr(pFAT, clusterLoc.baseAddr, 0);
@@ -1826,7 +1945,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
         clusterLoc = getTableBlockAddr(pFAT, clusterID);
 
         // Check if we need to update our working address
-        if (FAT_GetWorkingAddr(pFAT).baseAddr != clusterLoc.baseAddr)
+        if (getWorkingAddr(pFAT).baseAddr != clusterLoc.baseAddr)
         {
             // Update current working address
             FAT_SetWorkingAddr(pFAT, clusterLoc.baseAddr, 0);

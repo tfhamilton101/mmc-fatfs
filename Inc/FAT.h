@@ -194,20 +194,6 @@ typedef enum
     SEARCH_DIR_RECURSIVE,
 } Search_Mode_t;
 
-/************************************************************************************
- *                          Working Address Structure                               *
- ************************************************************************************/
-
-/*
- *  Structure to keep track of working Address
- */
-typedef struct
-{
-    uint32_t workingDir;
-    uint32_t baseAddr;
-    uint32_t offset;
-} WorkingAddr_t;
-
 #define MAX_DIRECTORIES 32
 #define MAX_ENTIRES_PER_DIRECTORY 256
 
@@ -258,6 +244,16 @@ typedef struct
     uint8_t dirLabel[VOLUME_LABEL_SIZE];
 } FAT_Directory_t;
 
+/*
+ *  Structure to keep track of working Address
+ */
+typedef struct
+{
+    uint32_t workingDir;
+    uint32_t baseAddr;
+    uint32_t offset;
+} WorkingAddr_t;
+
 /************************************************************************************
  *							FAT States												*
  ************************************************************************************/
@@ -285,27 +281,6 @@ typedef struct
     file_entry_t* CurrFile;
 } FAT_Handle_t;
 
-/**************************************************
- *           Traverse FAT Table Define            *
- **************************************************/
-typedef enum
-{
-    FAT_TRAVERSE_LOAD_QUEUE = 0,
-    FAT_TRAVERSE_FIND_LAST_ID,
-} fat_traverse_mode_t;
-
-/************************************************************************************
- *							FAT Offset Macros										*
- ************************************************************************************/
-
-/*** Partition Type Code Macros  ***/
-typedef enum
-{
-    MBR_TYPE_CODE_FAT32_A = 0x0B,
-    MBR_TYPE_CODE_FAT32_B = 0x0C,
-    MBR_TYPE_CODE_FAT16 = 0x0E,
-} mbr_type_code_t;
-
 /**** Macros for Master Boot Record ****/
 typedef enum
 {
@@ -314,83 +289,7 @@ typedef enum
     MBR_END_MARKER = 0x01FE,
 } mbr_offsets_t;
 
-/**** 	Offset Macros for Boot Sector 	****/
-typedef enum
-{
-    /*** FAT16 Specific ***/
-    BOOT_BLK_BYTES_PER_SEC = 0x0B,
-    BOOT_BLK_SEC_PER_CLUSTER = 0x0D,
-    BOOT_BLK_RESERVED_SECT = 0x0E,
-    BOOT_BLK_NUM_FATS = 0x10,
-    BOOT_BLK_NUM_ROOT_ENTRIES = 0x11,
-    BOOT_BLK_SECTORS_PER_TABLE_FAT16 = 0x16,
-    BOOT_BLK_TOTAL_VOLUME_BLOCKS = 0x20,
-    BOOT_BLK_FILE_SYS_TYPE_FAT16 = 0x36,
-    /*** FAT32 Specific ***/
-    BOOT_BLK_ROOT_DIR_CLUSTER_FAT32 = 0x2C,
-    BOOT_BLK_SECTORS_PER_TABLE_FAT32 = 0x24,
-    BOOT_BLK_FILE_SYS_TYPE_FAT32 = 0x52,
-} boot_block_offsets_t;
 
-#define BOOT_SIGNATURE 0xAA55
-
-/************************************************************************************
- *						File Allocation Table Macros								*
- ************************************************************************************/
-
-/**************************************************************************************
- * An queue is used to hold the clusterIDs that make a file. This is read from the FAT.
- * The size of the queue should be chosen such that most files can fit fully into the queue.
- * This will prevent the program from going back and reading the FAT mid way through a file.
- *
- * 						FAT16 								FAT32
- * 	  ------------------------------------------------------------------------------
- * 	  | Volume Size	  |	 Windows Default	|| Volume Size	 |	Windows Default	   |
- * 	  ------------------------------------------------------------------------------
- * 	  | 512 MB – 1 GB | 16KB ( 32 sectors)  || 256 MB – 8GB  |	 4KB (  8 sectors) |
- * 	  |   1 GB – 2 GB | 32KB ( 64 sectors)  ||    8GB – 16GB |	 8KB ( 16 sectors) |
- * 	  |   2 GB – 4 GB | 64KB ( 128 sectors) ||   16GB – 32GB |	16KB ( 32 sectors) |
- * 	  ------------------------------------------------------------------------------
- *
- *   Using the smallest cluster size (8 sectors) a queue size of 4096
- *   will allow a 16MB ( 4096 * 8 * 512 ) minimum file to fit in the queue.
- *
- * 	  -----------------------------------------------
- * 	  |  File Size  |	 FAT16	    |	 FAT32	    |
- * 	  -----------------------------------------------
- * 	  |     Min   	|	  67MB      |	  16MB      |
- * 	  |     Max  	|	 134MB      |	  67MB      |
- * 	  -----------------------------------------------
- *
- *************************************************************************************/
-
-/*
- *  Structure to define FAT queue
- */
-typedef enum
-{
-    FAT_QUEUE_MAX_CLUSTERS = 4096,
-    NODES_QUEUE_TAIL_INIT = 0,
-} FAT_Queue_t;
-
-/*
- *  Structure to for FAT processing
- */
-typedef struct
-{
-    uint32_t ClusterID;
-    uint32_t ContBlocks;
-} FAT_Queue_data_t;
-
-typedef enum
-{
-    FAT_FREE_ID_MARKER = 0x0000,
-    FAT_EOF_MARKER_FAT16 = 0xFFF8,
-    // FAT32 Max cluster: 2^28
-    FAT_EOF_MARKER_FAT32 = 0xFFFFFF8,
-    // Used for both FAT16 & FAT32 Table Updates
-    FAT_EOF_MARKER_GENERIC = 0xFFFFFFF,
-} fat_table_markers_t;
 
 /**************************************************
  *           FAT File I/O Return Types            *
@@ -413,15 +312,6 @@ typedef enum
     FREAD_EOF_FOUND,
     FREAD_DONE,
 } fat_fread_t;
-
-// Fload Return type
-typedef enum
-{
-    FLOAD_FAIL = 0,
-    FLOAD_NOP,
-    FLOAD_EOF_NOT_FOUND,
-    FLOAD_EOF_FOUND,
-} fat_fload_t;
 
 // Fwrite Return type
 typedef enum
@@ -454,14 +344,11 @@ fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
 void FAT_SetWorkingDir(FAT_Handle_t* pFAT, uint32_t Dir);
 void FAT_SetWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offset);
 uint32_t FAT_GetWorkingDir(FAT_Handle_t* pFAT);
-WorkingAddr_t FAT_GetWorkingAddr(FAT_Handle_t* pFAT);
 void FAT_GoToRootDir(FAT_Handle_t* pFAT);
 
 /* FAT Directory / File Searching Functions */
 bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file);
 Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
-// Create new file
-fat_open_t FAT_createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 
 /* FAT File Attribute Functions */
 bool FAT_FileFlagStatus(file_entry_t* file, FAT_file_flags_t flag);
