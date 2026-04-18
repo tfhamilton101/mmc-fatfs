@@ -374,9 +374,6 @@ typedef enum
  */
 #define SD_TIMEOUT_PRESCALE 152
 
-// Timer peripheral for Command Timeout
-#define SD_TIMEOUT_TIMER TIM3
-
 /************************************************************************************
  *                              Public Functions
  *************************************************************************************/
@@ -385,7 +382,7 @@ typedef enum
 void SD_Init(SD_Handle_t* pSDHandle);
 
 /*** Hardware Init Functions ***/
-void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx);
+void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo);
 void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type);
 
 /* Read / Write function */

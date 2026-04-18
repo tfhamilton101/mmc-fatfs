@@ -80,12 +80,13 @@ void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type)
  *
  *  @param[pSDHandle]   - Handler structure for SD Card
  *  @param[pTIMx]       - base address of the TIM peripheral
+ *  @param[irqNo]       - IRQ number for the TIM peripheral
  * 
  *  @return             - none
  *
  *  @note               - 
  */
-void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx)
+void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
 {
     TIM_Handle_t TIMHandle = {0};
 
@@ -105,18 +106,18 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx)
     TIM_Init(&TIMHandle);
 
     // Set Auto reload value & Prescaler
-    TIM_Set_AutoReload(SD_TIMEOUT_TIMER, 65535);
+    TIM_Set_AutoReload(pTIMx, 65535);
     // Fixed 100ms timeout for now.
-    TIM_Set_PreScaler(SD_TIMEOUT_TIMER, SD_TIMEOUT_PRESCALE);
+    TIM_Set_PreScaler(pTIMx, SD_TIMEOUT_PRESCALE);
 
     // Enable TIMx interrupt
-    TIM_DIERConfig(SD_TIMEOUT_TIMER, TIM_DIER_UIE, ENABLE);
+    TIM_DIERConfig(pTIMx, TIM_DIER_UIE, ENABLE);
 
     // Configure TIM priority
-    TIM_IRQPriorityConfig(IRQ_NO_TIM3, NVIC_IRQ_PRI12);
+    TIM_IRQPriorityConfig(irqNo, NVIC_IRQ_PRI12);
 
     // Configure TIM IRQ
-    TIM_IRQInterruptConfig(IRQ_NO_TIM3, ENABLE);
+    TIM_IRQInterruptConfig(irqNo, ENABLE);
 }
 
 /****************************************************************************************
