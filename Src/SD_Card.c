@@ -420,28 +420,29 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
     /*****		 Read OCR Register 		*****/
     CmdResponse = SD_ReadOcrRegister(pSDHandle);
 
+    bool pwrUpStatus = (CmdResponse.R3.OCR >> OCR_PWR_UP_STATUS) & 0x1;
+    
     /* Check if the power up procedure has finished */
-    if ((CmdResponse.R3.OCR >> OCR_PWR_UP_STATUS) & 0x1)
-    {
-        pSDHandle->SD_CardType = ((CmdResponse.R3.OCR >> OCR_CCS) & 0x1);
-
-        if (pSDHandle->SD_CardType == SD_CARDTYPE_SDSC)
-        {
-            SD_SetBlockLength(pSDHandle);
-        }
-        // Assert chip select HIGH
-        SD_ChipSelectControl(pSDHandle, HIGH);
-
-        // Update SPI Clock frequency for higher performance
-        SPI_UpdateClockFreq(pSDHandle->pSPIx, 50000000);
-        return INIT_SUCCESS;
-    }
-    else
+    if (!pwrUpStatus)
     {
         // Assert chip select HIGH
         SD_ChipSelectControl(pSDHandle, HIGH);
         return INIT_FAIL;
     }
+
+    pSDHandle->SD_CardType = ((CmdResponse.R3.OCR >> OCR_CCS) & 0x1);
+
+    if (pSDHandle->SD_CardType == SD_CARDTYPE_SDSC)
+    {
+        SD_SetBlockLength(pSDHandle);
+    }
+    // Assert chip select HIGH
+    SD_ChipSelectControl(pSDHandle, HIGH);
+
+    // Update SPI Clock frequency for higher performance
+    SPI_UpdateClockFreq(pSDHandle->pSPIx, 50000000);
+    
+    return INIT_SUCCESS;
 }
 
 /****************************************************************************************
