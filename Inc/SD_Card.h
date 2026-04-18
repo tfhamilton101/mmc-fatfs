@@ -11,11 +11,7 @@
 // Standard Libraries
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "Utils.h"
-#include "stm32f407xx_dma_driver.h"
 #include "stm32f407xx_gpio_driver.h"
 #include "stm32f407xx_spi_driver.h"
 #include "stm32f407xx_timer_driver.h"

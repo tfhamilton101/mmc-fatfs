@@ -7,6 +7,11 @@
 
 #include "SD_Card.h"
 
+#include <stdlib.h>
+#include <string.h>
+#include "stm32f407xx_dma_driver.h"
+
+
 //-----------   Private function declarations    -----------//
 static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle);
 static void SD_ChipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state);
