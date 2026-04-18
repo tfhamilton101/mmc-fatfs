@@ -322,6 +322,8 @@ typedef enum
     FWRITE_DONE,
 } fat_fwrite_t;
 
+extern FAT_Handle_t FAT;
+
 /************************************************************************************
  *			        		APIs supported by this driver							*
  * 		   For more information about the APIs check the function definitions		*

@@ -132,6 +132,8 @@ typedef enum
 /***************************************************
  * 				Global Variables    			   *
  ***************************************************/
+FAT_Handle_t FAT = {0};
+
 // Buffer to keep File Construction Stack
 static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
 
@@ -139,21 +141,21 @@ static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
  * 				Static Functions    			   *
  ***************************************************/
 // Remove the padded spaces from a file entry name & entension
-static void RemoveSpacePadding(uint8_t* text, uint8_t fieldSize);
+static void removeSpacePadding(uint8_t* text, uint8_t fieldSize);
 // Parse File name and extension
 static uint8_t parseFilename(char* FullName, uint8_t* Filename, uint8_t* FileExt);
 static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename);
 
-static fat_fload_t loadNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
+static fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
+static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
 
-static void FAT_SetCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
+static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t offset);
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
-static fat_fload_t FAT_traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
-static fat_fload_t FAT_loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
+static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT);
 
 static bool isEndOfDir(file_entry_t* file);
@@ -317,7 +319,7 @@ void FAT_GetSystemInfo(FAT_Handle_t* pFAT)
 
     /* Instead we will get the volume label from the first in the root directory. This is a special item just for this. */
     strncpy((char*)SystemInfo->VolumeLabel, (char*)(buff + FILENAME), VOLUME_LABEL_SIZE);
-    RemoveSpacePadding(SystemInfo->VolumeLabel, VOLUME_LABEL_SIZE);
+    removeSpacePadding(SystemInfo->VolumeLabel, VOLUME_LABEL_SIZE);
 
     /* Update the FAT Handler Status */
     pFAT->FAT_Stat = INIT_FAT_SUCCESS;
@@ -389,11 +391,11 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file)
 
         // Copy in Filename
         strncpy((char*)file->Filename, (char*)(entryAddr + currAddr.offset + FILENAME), FILENAME_SIZE);
-        RemoveSpacePadding(file->Filename, FILENAME_SIZE);
+        removeSpacePadding(file->Filename, FILENAME_SIZE);
 
         // Copy in File Extension
         strncpylower(file->FileExt, (entryAddr + currAddr.offset + FILE_EXTENSION), FILE_EXT_SHORT_SIZE);
-        RemoveSpacePadding(file->FileExt, FILE_EXT_SHORT_SIZE);
+        removeSpacePadding(file->FileExt, FILE_EXT_SHORT_SIZE);
     }
     // Otherwise we need to process a long file name (VFAT)
     else
@@ -1091,7 +1093,7 @@ static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename)
 fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, file_mode_t mode)
 {
     // Set our current working file
-    FAT_SetCurFile(pFAT, file);
+    setCurFile(pFAT, file);
 
     // Error Checking
     if ((FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (mode != FILE_MODE_READ && mode != FILE_MODE_WRITE && mode != FILE_MODE_WRITE_NEW))
@@ -1133,7 +1135,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
 
     // Load Up the NodesQueue
-    loadStatus = loadNodesQueue(pFAT, file, mode);
+    loadStatus = loadFileNodesQueue(pFAT, file, mode);
 
     // Return Types
     if ((loadStatus == FLOAD_EOF_FOUND) || (loadStatus == FLOAD_EOF_NOT_FOUND))
@@ -1145,7 +1147,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
 }
 
 /****************************************************************************************
- *	@fn 			     - loadNodesQueue
+ *	@fn 			     - loadFileNodesQueue
  *
  * 	@brief			     - Read from the FAT table and load up the nodes queue
  *
@@ -1155,7 +1157,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
  * 	@return			     - Search status
  *
  */
-fat_fload_t loadNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
+fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
 {
     // Defining a local variable so the following statements are shorter.
     NodesQueue* pNodesQueue = &file->NodesQueue;
@@ -1179,7 +1181,7 @@ fat_fload_t loadNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t m
         if (mode == FILE_MODE_WRITE || mode == FILE_MODE_WRITE_NEW)
         {
             // Find the last cluster ID in the file
-            if (FAT_traverseTable(pFAT, pNodesQueue, file->StartingCluster, FAT_TRAVERSE_FIND_LAST_ID) == FLOAD_FAIL)
+            if (traverseTable(pFAT, pNodesQueue, file->StartingCluster, FAT_TRAVERSE_FIND_LAST_ID) == FLOAD_FAIL)
             {
                 return FLOAD_FAIL;
             }
@@ -1215,12 +1217,12 @@ fat_fload_t loadNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t m
     // Fill the NodesQueue up with the next free ClusterIDs
     if (mode == FILE_MODE_WRITE || mode == FILE_MODE_WRITE_NEW)
     {
-        return FAT_loadFreeClusterIDs(pFAT, pNodesQueue, currClusterID);
+        return loadFreeClusterIDs(pFAT, pNodesQueue, currClusterID);
     }
     else
     {
         // Loop until ether the queue is full or EOF is found and Report the status
-        return FAT_traverseTable(pFAT, pNodesQueue, currClusterID, FAT_TRAVERSE_LOAD_QUEUE);
+        return traverseTable(pFAT, pNodesQueue, currClusterID, FAT_TRAVERSE_LOAD_QUEUE);
     }
 }
 
@@ -1359,7 +1361,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file)
         // If the queue is empty but the EOF is not found, we need to reload the queue
         if (isQueueEmpty(&pNodesQueue->Info) && !isEndofFatEntry(pFAT, pNodesQueue->Tail))
         {
-            fat_fload_t loadStatus = loadNodesQueue(pFAT, file, FILE_MODE_READ);
+            fat_fload_t loadStatus = loadFileNodesQueue(pFAT, file, FILE_MODE_READ);
 
             // fload writes over the block buffer, so we need to re-read the current block.
             cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer);
@@ -1716,7 +1718,7 @@ void FAT_GoToRootDir(FAT_Handle_t* pFAT)
  *************************************************************************************************/
 
 /****************************************************************************************
- *	@fn 			     - FAT_SetCurFile
+ *	@fn 			     - setCurFile
  *
  * 	@brief			     - Set the pointer to the current file. 
  *
@@ -1726,14 +1728,14 @@ void FAT_GoToRootDir(FAT_Handle_t* pFAT)
  * 	@return			     - None
  *
  */
-static void FAT_SetCurFile(FAT_Handle_t* pFAT, file_entry_t* file)
+static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file)
 {
     // The field is used to keep track of which file the application is currently accessing
     pFAT->CurrFile = file;
 }
 
 /****************************************************************************************
- *	@fn 			     - RemoveSpacePadding
+ *	@fn 			     - removeSpacePadding
  *
  * 	@brief			     - Remove padding at the end of Volume name, filename or file extension
  *
@@ -1744,7 +1746,7 @@ static void FAT_SetCurFile(FAT_Handle_t* pFAT, file_entry_t* file)
  *
  *
  */
-static void RemoveSpacePadding(uint8_t* text, uint8_t fieldSize)
+static void removeSpacePadding(uint8_t* text, uint8_t fieldSize)
 {
     uint8_t* endPtr = (text + fieldSize - 1);
 
@@ -2061,7 +2063,7 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
 }
 
 /****************************************************************************************
- *  @fn                   - FAT_loadFreeClusterIDs
+ *  @fn                   - loadFreeClusterIDs
  *
  *  @brief                - Function to fill NodesQueue with free clusterIDs
  * 
@@ -2073,7 +2075,7 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
  *
  *  @note                 - 
  */
-static fat_fload_t FAT_loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster)
+static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster)
 {
     uint32_t currClusterID = startCluster;
 
@@ -2145,7 +2147,7 @@ fat_init_states_t FAT_getStat(FAT_Handle_t* pFAT)
 }
 
 /****************************************************************************************
- *  @fn                   - FAT_traverseTable
+ *  @fn                   - traverseTable
  *
  *  @brief                - Function to traverse through FAT Table
  * 
@@ -2158,7 +2160,7 @@ fat_init_states_t FAT_getStat(FAT_Handle_t* pFAT)
  *
  *  @note                 - 
  */
-static fat_fload_t FAT_traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode)
+static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode)
 {
     uint32_t currClusterID = startCluster;
 
