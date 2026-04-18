@@ -21,11 +21,6 @@
 #include "stm32f407xx_dma_driver.h"
 #include "stm32f407xx_usart_driver.h"
 
-/******  FAT DEBUG CONFIGS  ******/
-
-// #define FAT_DEBUG_GENERIC
-// #define FAT_DEBUG_TABLE
-
 /************************************************************************************
  *							 Directory Macros										*
  ************************************************************************************/

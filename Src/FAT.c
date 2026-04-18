@@ -7,10 +7,13 @@
 
 #include "FAT.h"
 
+/******  FAT DEBUG CONFIGS  ******/
+
+// #define FAT_DEBUG_GENERIC
+// #define FAT_DEBUG_TABLE
+
 #if defined(FAT_DEBUG_GENERIC)
-extern USART_Handle_t USART2_t;
 #include "Hexdump.h"
-#include "stm32f407xx_usart_driver.h"
 #endif
 
 /************************************************************************************
