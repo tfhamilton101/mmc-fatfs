@@ -231,6 +231,7 @@ static Command_Response_t SD_CheckSupplyRange(SD_Handle_t* pSDHandle);
 static Command_Response_t SD_SendOpCond(SD_Handle_t* pSDHandle);
 static Command_Response_t SD_ReadOcrRegister(SD_Handle_t* pSDHandle);
 static Command_Response_t SD_SetBlockLength(SD_Handle_t* pSDHandle);
+static timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle);
 
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
@@ -1077,7 +1078,7 @@ SD_States_t SD_GetState(SD_Handle_t* pSDHandle)
  *
  *  @note              - TIMEOUT_NON_EXPIRED or TIMEOUT_EXPIRED
  */
-timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle)
+static timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle)
 {
     return pSDHandle->cmdTimeout.Status;
 }

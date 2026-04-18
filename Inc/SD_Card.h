@@ -206,7 +206,6 @@ void SD_ToggleCurrBuff(SD_Handle_t* pSDHandle);
 /* I/O Functions */
 // TODO: Consider making this static
 card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle);
-timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle);
 
 /* IRQ Functions */
 void SD_IRQHandling(SD_Handle_t* pSDHandle);
