@@ -322,7 +322,6 @@ typedef enum
     FWRITE_DONE,
 } fat_fwrite_t;
 
-extern FAT_Handle_t FAT;
 
 /************************************************************************************
  *			        		APIs supported by this driver							*
@@ -366,5 +365,11 @@ fat_init_states_t FAT_getStat(FAT_Handle_t* pFAT);
 
 /* IRQ Functions */
 void FAT_IRQHandling(FAT_Handle_t* pFAT);
+
+/************************************************************************************
+ *			        		Externs for other files to use						*
+ ************************************************************************************/
+
+ extern FAT_Handle_t FAT;
 
 #endif /* INC_FAT_H_ */
