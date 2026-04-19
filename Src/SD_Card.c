@@ -225,7 +225,7 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
 static Command_Response_t SendAppCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc);
 
 /********		 SD Initialization Functions 		********/
-static void RunPowerSequence(SD_Handle_t* pSDHandle);
+static void runPowerSequence(SD_Handle_t* pSDHandle);
 static Command_Response_t goIdleState(SD_Handle_t* pSDHandle);
 static Command_Response_t checkSupplyRange(SD_Handle_t* pSDHandle);
 static Command_Response_t sendOpCond(SD_Handle_t* pSDHandle);
@@ -377,7 +377,7 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
     SPI_PeripheralControl(pSDHandle->pSPIx, ENABLE);
 
     /*********      Send Power Sequence    ********/
-    RunPowerSequence(pSDHandle);
+    runPowerSequence(pSDHandle);
 
     // Assert chip select low
     chipSelectControl(pSDHandle, LOW);
@@ -669,7 +669,7 @@ static Command_Response_t parseResponse(uint8_t* Response, sd_response_t Format)
 **********************************************************************************************/
 
 /****************************************************************************************
- *	@fn 			     - RunPowerSequence
+ *	@fn 			     - runPowerSequence
  *
  * 	@brief			     - Function to run SPI power sequence
  *
@@ -679,7 +679,7 @@ static Command_Response_t parseResponse(uint8_t* Response, sd_response_t Format)
  *
  * 	@note
  */
-static void RunPowerSequence(SD_Handle_t* pSDHandle)
+static void runPowerSequence(SD_Handle_t* pSDHandle)
 {
     /****** Send 80 dummy clock cycles with CI & MOSI high  ******/
     chipSelectControl(pSDHandle, HIGH);
