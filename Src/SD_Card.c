@@ -213,25 +213,25 @@ typedef enum
 
 
 //-----------   Private function declarations    -----------//
-static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle);
-static void SD_ChipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state);
-static Command_Response_t SD_GetResponse(SD_Handle_t* pSDHandle, sd_response_t Format);
-static Command_Response_t SD_ParseResponse(uint8_t* Response, sd_response_t Format);
-static void SD_TimeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi);
-static void SD_WaitBusyState(SD_Handle_t* pSDHandle, uint8_t* response);
+static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle);
+static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state);
+static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Format);
+static Command_Response_t parseResponse(uint8_t* Response, sd_response_t Format);
+static void timeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi);
+static void waitBusyState(SD_Handle_t* pSDHandle, uint8_t* response);
 
 /********		 SD Command Functions 		********/
-static Command_Response_t SD_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc);
-static Command_Response_t SD_App_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc);
+static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc);
+static Command_Response_t SendAppCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc);
 
 /********		 SD Initialization Functions 		********/
-static void SD_PowerSequence(SD_Handle_t* pSDHandle);
-static Command_Response_t SD_GoIdleState(SD_Handle_t* pSDHandle);
-static Command_Response_t SD_CheckSupplyRange(SD_Handle_t* pSDHandle);
-static Command_Response_t SD_SendOpCond(SD_Handle_t* pSDHandle);
-static Command_Response_t SD_ReadOcrRegister(SD_Handle_t* pSDHandle);
-static Command_Response_t SD_SetBlockLength(SD_Handle_t* pSDHandle);
-static timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle);
+static void RunPowerSequence(SD_Handle_t* pSDHandle);
+static Command_Response_t goIdleState(SD_Handle_t* pSDHandle);
+static Command_Response_t checkSupplyRange(SD_Handle_t* pSDHandle);
+static Command_Response_t sendOpCond(SD_Handle_t* pSDHandle);
+static Command_Response_t readOcrRegister(SD_Handle_t* pSDHandle);
+static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle);
+static timeout_status_t getTimeoutStatus(SD_Handle_t* pSDHandle);
 
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
@@ -340,7 +340,7 @@ void SD_Init(SD_Handle_t* pSDHandle)
         {
             pSDHandle->SD_CardState = SD_STATE_NO_CARD;
         }
-        else if (SD_Init_SPI(pSDHandle) == INIT_SUCCESS)
+        else if (InitSpi(pSDHandle) == INIT_SUCCESS)
         {
             pSDHandle->SD_CardState = SD_STATE_READY;
         }
@@ -356,7 +356,7 @@ void SD_Init(SD_Handle_t* pSDHandle)
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_Init_SPI
+ *	@fn 			     - InitSpi
  *
  * 	@brief			     - Function to initialize SD Card in SPI mode
  *
@@ -366,7 +366,7 @@ void SD_Init(SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
+static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
@@ -377,35 +377,35 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
     SPI_PeripheralControl(pSDHandle->pSPIx, ENABLE);
 
     /*********      Send Power Sequence    ********/
-    SD_PowerSequence(pSDHandle);
+    RunPowerSequence(pSDHandle);
 
     // Assert chip select low
-    SD_ChipSelectControl(pSDHandle, LOW);
+    chipSelectControl(pSDHandle, LOW);
 
     /*********     	  Go Idle State       *********/
     /* Instruct the card to use the SPI interface */
     uint8_t maxResetAttemps = CMD0_MAX_ATTEMPTS;
     do
     {
-        CmdResponse = SD_GoIdleState(pSDHandle);
+        CmdResponse = goIdleState(pSDHandle);
         maxResetAttemps--;
     } while ((CmdResponse.R1.Flags != R1_IDLE) && maxResetAttemps != 0);
 
     if (maxResetAttemps == 0)
     {
         // Assert chip select HIGH
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
         return CMD0_FAIL;
     }
 
     /*********     Check Supply range (SEND_IF_COND) 	 *********/
     /*  Verify the SD Memory Card Interface operating condition  */
-    CmdResponse = SD_CheckSupplyRange(pSDHandle);
+    CmdResponse = checkSupplyRange(pSDHandle);
 
     if ((CmdResponse.R7.Check_Pattern != 0xAA) && (CmdResponse.R7.Voltage_Accepted != 0x1))
     {
         // Assert chip select HIGH
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
         return CMD8_FAIL;
     }
 
@@ -414,11 +414,11 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
     // TODO: Implement Error check or timeout
     do
     {
-        CmdResponse = SD_SendOpCond(pSDHandle);
+        CmdResponse = sendOpCond(pSDHandle);
     } while (CmdResponse.R1.Flags == R1_IDLE);
 
     /*****		 Read OCR Register 		*****/
-    CmdResponse = SD_ReadOcrRegister(pSDHandle);
+    CmdResponse = readOcrRegister(pSDHandle);
 
     bool pwrUpStatus = (CmdResponse.R3.OCR >> OCR_PWR_UP_STATUS) & 0x1;
     
@@ -426,7 +426,7 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
     if (!pwrUpStatus)
     {
         // Assert chip select HIGH
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
         return INIT_FAIL;
     }
 
@@ -434,10 +434,10 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
 
     if (pSDHandle->SD_CardType == SD_CARDTYPE_SDSC)
     {
-        SD_SetBlockLength(pSDHandle);
+        setBlockLength(pSDHandle);
     }
     // Assert chip select HIGH
-    SD_ChipSelectControl(pSDHandle, HIGH);
+    chipSelectControl(pSDHandle, HIGH);
 
     // Update SPI Clock frequency for higher performance
     SPI_UpdateClockFreq(pSDHandle->pSPIx, 50000000);
@@ -446,7 +446,7 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_Command
+ *	@fn 			     - SendCommand
  *
  * 	@brief			     - Send SPI SD Command
  *
@@ -459,7 +459,7 @@ static SD_Init_States_t SD_Init_SPI(SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-static Command_Response_t SD_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc)
+static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc)
 {
     Command_Response_t CmdResponse = {0};
     uint8_t dummy_write[2] = {0xFF, 0xFF};
@@ -495,25 +495,25 @@ static Command_Response_t SD_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, 
 
     if (cmdID == CMD8)
     {
-        CmdResponse = SD_GetResponse(pSDHandle, RESPONSE_R7);
+        CmdResponse = getResponse(pSDHandle, RESPONSE_R7);
     }
     else if (cmdID == CMD58)
     {
-        CmdResponse = SD_GetResponse(pSDHandle, RESPONSE_R3);
+        CmdResponse = getResponse(pSDHandle, RESPONSE_R3);
     }
     else
     {
-        CmdResponse = SD_GetResponse(pSDHandle, RESPONSE_R1);
+        CmdResponse = getResponse(pSDHandle, RESPONSE_R1);
     }
 
     // CMD12 Requires a R1b busy state
     if (cmdID == CMD12)
     {
-        SD_WaitBusyState(pSDHandle, &CmdResponse.R1.Flags);
+        waitBusyState(pSDHandle, &CmdResponse.R1.Flags);
     }
 
     // Error Handling
-    if (SD_GetTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
+    if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
     {
         pSDHandle->SD_CardState = SD_STATE_FAIL;
     }
@@ -522,7 +522,7 @@ static Command_Response_t SD_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, 
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_App_Command
+ *	@fn 			     - SendAppCommand
  *
  * 	@brief			     - Send SPI SD Application Command
  *
@@ -535,7 +535,7 @@ static Command_Response_t SD_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, 
  *
  * 	@note  				 - 	ACMD<n> means a command sequence of CMD55-CMD<n>
  */
-static Command_Response_t SD_App_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc)
+static Command_Response_t SendAppCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc)
 {
     Command_Response_t CmdResponse = {0};
 
@@ -543,16 +543,16 @@ static Command_Response_t SD_App_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmd
     /* 		This tells the card to interpret the next     */
     /* 		command as application-specific			      */
     /***   Argument: [31:16] RCA, [15:0] stuff bit      ***/
-    SD_Command(pSDHandle, CMD55, CMD_ARG_NULL, CMD_CRC_NULL);
+    SendCommand(pSDHandle, CMD55, CMD_ARG_NULL, CMD_CRC_NULL);
 
     /*****   	Next Send Application Specific Command	  *****/
-    CmdResponse = SD_Command(pSDHandle, cmdID, argument, crc);
+    CmdResponse = SendCommand(pSDHandle, cmdID, argument, crc);
 
     return CmdResponse;
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_GetResponse
+ *	@fn 			     - getResponse
  *
  * 	@brief			     - Function to receive and parse SPI Command response
  *
@@ -563,7 +563,7 @@ static Command_Response_t SD_App_Command(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmd
  *
  * 	@note
  */
-static Command_Response_t SD_GetResponse(SD_Handle_t* pSDHandle, sd_response_t Format)
+static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Format)
 {
     uint8_t CmdResponse[5] = {0};
     uint8_t* ResponsePtr = CmdResponse;
@@ -593,11 +593,11 @@ static Command_Response_t SD_GetResponse(SD_Handle_t* pSDHandle, sd_response_t F
         SPI_MasterTransfer(pSDHandle->pSPIx, ResponsePtr, 4);
     }
 
-    return SD_ParseResponse(CmdResponse, Format);
+    return parseResponse(CmdResponse, Format);
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_WaitBusyState
+ *	@fn 			     - waitBusyState
  *
  * 	@brief			     - Wait during SD busy state (Multi-block read/writes)
  *
@@ -607,28 +607,28 @@ static Command_Response_t SD_GetResponse(SD_Handle_t* pSDHandle, sd_response_t F
  *
  * 	@note        // TODO: Conisder making this interrupt driven for better multitasking??
  */
-static void SD_WaitBusyState(SD_Handle_t* pSDHandle, uint8_t* response)
+static void waitBusyState(SD_Handle_t* pSDHandle, uint8_t* response)
 {
     // R1b response is an R1 response followed by an optional busy state.
     // The card will hold MISO low until the card is done processing the current task
     SPI_MasterTransfer(pSDHandle->pSPIx, response, 1);
 
     // Start Cmd Timeout
-    SD_TimeoutConfig(pSDHandle, ENABLE);
+    timeoutConfig(pSDHandle, ENABLE);
 
     uint8_t idle = 0x00;
 
     do
     {
         SPI_MasterTransfer(pSDHandle->pSPIx, &idle, 1);
-    } while ((idle != 0xFF) && (SD_GetTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
+    } while ((idle != 0xFF) && (getTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
 
     // Stop Cmd Timeout
-    SD_TimeoutConfig(pSDHandle, DISABLE);
+    timeoutConfig(pSDHandle, DISABLE);
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_ParseResponse
+ *	@fn 			     - parseResponse
  *
  * 	@brief			     - Function to parse response of SPI Command
  *
@@ -639,7 +639,7 @@ static void SD_WaitBusyState(SD_Handle_t* pSDHandle, uint8_t* response)
  *
  * 	@note
  */
-static Command_Response_t SD_ParseResponse(uint8_t* Response, sd_response_t Format)
+static Command_Response_t parseResponse(uint8_t* Response, sd_response_t Format)
 {
     Command_Response_t temp = {0};
     uint32_t ext_resp;
@@ -669,7 +669,7 @@ static Command_Response_t SD_ParseResponse(uint8_t* Response, sd_response_t Form
 **********************************************************************************************/
 
 /****************************************************************************************
- *	@fn 			     - SD_PowerSequence
+ *	@fn 			     - RunPowerSequence
  *
  * 	@brief			     - Function to run SPI power sequence
  *
@@ -679,10 +679,10 @@ static Command_Response_t SD_ParseResponse(uint8_t* Response, sd_response_t Form
  *
  * 	@note
  */
-static void SD_PowerSequence(SD_Handle_t* pSDHandle)
+static void RunPowerSequence(SD_Handle_t* pSDHandle)
 {
     /****** Send 80 dummy clock cycles with CI & MOSI high  ******/
-    SD_ChipSelectControl(pSDHandle, HIGH);
+    chipSelectControl(pSDHandle, HIGH);
 
     uint8_t n;
     uint8_t data = 0xFF;
@@ -693,7 +693,7 @@ static void SD_PowerSequence(SD_Handle_t* pSDHandle)
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_GoIdleState (CMD0)
+ *	@fn 			     - goIdleState (CMD0)
  *
  * 	@brief			     - Function to reset the SD Memory Card
  *
@@ -703,20 +703,20 @@ static void SD_PowerSequence(SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-static Command_Response_t SD_GoIdleState(SD_Handle_t* pSDHandle)
+static Command_Response_t goIdleState(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
     /*******   		Software reset (GO_IDLE_STATE)		*****/
     /**   CMD0 tells the card to use the SPI interface.     **/
     /** This cannot be changed once the part is powered on  **/
-    CmdResponse = SD_Command(pSDHandle, CMD0, CMD_ARG_NULL, CMD0_CRC);
+    CmdResponse = SendCommand(pSDHandle, CMD0, CMD_ARG_NULL, CMD0_CRC);
 
     return CmdResponse;
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_CheckSupplyRange
+ *	@fn 			     - checkSupplyRange
  *
  * 	@brief			     - Function to ask card if it can operate in supplied range
  *
@@ -726,18 +726,18 @@ static Command_Response_t SD_GoIdleState(SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-static Command_Response_t SD_CheckSupplyRange(SD_Handle_t* pSDHandle)
+static Command_Response_t checkSupplyRange(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
-    /*******   Check Supply Range (SD_CheckSupplyRange)	*****/
-    CmdResponse = SD_Command(pSDHandle, CMD8, CMD8_ARG, CMD8_CRC);
+    /*******   Check Supply Range (checkSupplyRange)	*****/
+    CmdResponse = SendCommand(pSDHandle, CMD8, CMD8_ARG, CMD8_CRC);
 
     return CmdResponse;
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_SendOpCond
+ *	@fn 			     - sendOpCond
  *
  * 	@brief			     - Function to Initiate initialization process
  *
@@ -747,20 +747,20 @@ static Command_Response_t SD_CheckSupplyRange(SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-static Command_Response_t SD_SendOpCond(SD_Handle_t* pSDHandle)
+static Command_Response_t sendOpCond(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
     /* Send host capacity support information (HCS) and
 	 *  asks the card to send its operating condition register (OCR)
 	 * content in the response on the CMD line	*/
-    CmdResponse = SD_App_Command(pSDHandle, ACMD41, ACMD41_ARG, CMD_CRC_NULL);
+    CmdResponse = SendAppCommand(pSDHandle, ACMD41, ACMD41_ARG, CMD_CRC_NULL);
 
     return CmdResponse;
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_ReadOcrRegister
+ *	@fn 			     - readOcrRegister
  *
  * 	@brief			     - Function to Read OCR Register
  *
@@ -770,7 +770,7 @@ static Command_Response_t SD_SendOpCond(SD_Handle_t* pSDHandle)
  *
  * 	@note				 - Returns R3 response (OCR)
  */
-static Command_Response_t SD_ReadOcrRegister(SD_Handle_t* pSDHandle)
+static Command_Response_t readOcrRegister(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
@@ -778,13 +778,13 @@ static Command_Response_t SD_ReadOcrRegister(SD_Handle_t* pSDHandle)
 	 * The 32-bit operation conditions register stores the VDD voltage profile
 	 * of the card.	Additionally, this register includes status information bits
 	 * The Card power up status bit is set if the power up procedure has finished */
-    CmdResponse = SD_Command(pSDHandle, CMD58, CMD_ARG_NULL, CMD_CRC_NULL);
+    CmdResponse = SendCommand(pSDHandle, CMD58, CMD_ARG_NULL, CMD_CRC_NULL);
 
     return CmdResponse;
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_SetBlockLength
+ *	@fn 			     - setBlockLength
  *
  * 	@brief			     - Function to set block length of SDSC Card
  *
@@ -794,14 +794,14 @@ static Command_Response_t SD_ReadOcrRegister(SD_Handle_t* pSDHandle)
  *
  * 	@note				 - Returns R1 response
  */
-static Command_Response_t SD_SetBlockLength(SD_Handle_t* pSDHandle)
+static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
     /* For SDSC Card, block length is set by this command
 	 * For SDHC and SDXC Cards, block length of the memory
 	 * access commands are fixed to 512 bytes */
-    CmdResponse = SD_Command(pSDHandle, CMD16, CMD16_ARG, CMD_CRC_NULL);
+    CmdResponse = SendCommand(pSDHandle, CMD16, CMD16_ARG, CMD_CRC_NULL);
 
     return CmdResponse;
 }
@@ -834,24 +834,24 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
     if (BlockCount == 1)
     {
         // Assert chip select low
-        SD_ChipSelectControl(pSDHandle, LOW);
+        chipSelectControl(pSDHandle, LOW);
 
         /*******   READ_SINGLE_BLOCK	*****/
-        CmdResponse = SD_Command(pSDHandle, CMD17, BlockAddr, CMD_CRC_NULL);
+        CmdResponse = SendCommand(pSDHandle, CMD17, BlockAddr, CMD_CRC_NULL);
     }
     else
     {
         // Assert chip select low
-        SD_ChipSelectControl(pSDHandle, LOW);
+        chipSelectControl(pSDHandle, LOW);
 
         /*******    READ_MULTIPLE_BLOCK  	*****/
-        CmdResponse = SD_Command(pSDHandle, CMD18, BlockAddr, CMD_CRC_NULL);
+        CmdResponse = SendCommand(pSDHandle, CMD18, BlockAddr, CMD_CRC_NULL);
     }
 
     // Confirm command was successful. All flags will be cleared
     if (CmdResponse.R1.Flags != 0x00)
     {
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
         return SD_READ_WRITE_FAIL;
     }
 
@@ -875,22 +875,22 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
             uint8_t token = 0xFF;
 
             // Start Cmd Timeout
-            SD_TimeoutConfig(pSDHandle, ENABLE);
+            timeoutConfig(pSDHandle, ENABLE);
 
             // Read Until data Command Token Arrives
             do
             {
                 SPI_MasterTransfer(pSDHandle->pSPIx, &token, 1);
-            } while ((token != BLOCK_READ_TOKEN) && (SD_GetTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
+            } while ((token != BLOCK_READ_TOKEN) && (getTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
 
             // Stop Cmd Timeout
-            SD_TimeoutConfig(pSDHandle, DISABLE);
+            timeoutConfig(pSDHandle, DISABLE);
 
             // Error Handling
-            if (SD_GetTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
+            if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
             {
                 // Release chip select
-                SD_ChipSelectControl(pSDHandle, HIGH);
+                chipSelectControl(pSDHandle, HIGH);
 
                 // Set Fail flags
                 pSDHandle->SD_CardState = SD_STATE_FAIL;
@@ -913,11 +913,11 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
         if (BlockCount > 1)
         {
             /*******    STOP_TRANSMISSION  	*****/
-            CmdResponse = SD_Command(pSDHandle, CMD12, CMD_ARG_NULL, CMD_CRC_NULL);
+            CmdResponse = SendCommand(pSDHandle, CMD12, CMD_ARG_NULL, CMD_CRC_NULL);
         }
 
         // Release chip select
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
     }
 
     return SD_READ_WRITE_SUCCESS;
@@ -944,28 +944,29 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
     {
         return SD_READ_WRITE_FAIL;
     }
+    
     if (BlockCount == 1)
     {
         // Assert chip select low
-        SD_ChipSelectControl(pSDHandle, LOW);
+        chipSelectControl(pSDHandle, LOW);
 
         /*****   WRITE_BLOCK	*****/
-        CmdResponse = SD_Command(pSDHandle, CMD24, BlockAddr, CMD_CRC_NULL);
+        CmdResponse = SendCommand(pSDHandle, CMD24, BlockAddr, CMD_CRC_NULL);
     }
     else
     {
         // Assert chip select low
-        SD_ChipSelectControl(pSDHandle, LOW);
+        chipSelectControl(pSDHandle, LOW);
 
         // TODO: Verify multiblock write
         /*****     WRITE_MULTIPLE_BLOCK  	*****/
-        CmdResponse = SD_Command(pSDHandle, CMD25, BlockAddr, CMD_CRC_NULL);
+        CmdResponse = SendCommand(pSDHandle, CMD25, BlockAddr, CMD_CRC_NULL);
     }
 
     // Confirm command was successful. All flags will be cleared
     if (CmdResponse.R1.Flags != 0x00)
     {
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
         return SD_READ_WRITE_FAIL;
     }
 
@@ -1006,13 +1007,13 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
             SPI_ReceiveData(pSDHandle->pSPIx, dummy, 1);
 
             // Wait for Card to process the command
-            SD_WaitBusyState(pSDHandle, &dataResp);
+            waitBusyState(pSDHandle, &dataResp);
 
             // Error Handling
-            if (SD_GetTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED || (dataResp != WRITE_DATA_ACCEPTED))
+            if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED || (dataResp != WRITE_DATA_ACCEPTED))
             {
                 // Release chip select
-                SD_ChipSelectControl(pSDHandle, HIGH);
+                chipSelectControl(pSDHandle, HIGH);
 
                 // Set Fail flags
                 pSDHandle->SD_CardState = SD_STATE_FAIL;
@@ -1031,14 +1032,14 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
             SPI_ReceiveData(pSDHandle->pSPIx, dummy, 1);
 
             // Start Wait for busy state to conclude
-            SD_WaitBusyState(pSDHandle, dummy);
+            waitBusyState(pSDHandle, dummy);
         }
 
         // Release chip select
-        SD_ChipSelectControl(pSDHandle, HIGH);
+        chipSelectControl(pSDHandle, HIGH);
     }
 
-    if (SD_GetTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
+    if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
     {
         return SD_READ_WRITE_FAIL;
     }
@@ -1069,7 +1070,7 @@ SD_States_t SD_GetState(SD_Handle_t* pSDHandle)
 }
 
 /****************************************************************************************
- *  @fn                - SD_GetTimeoutStatus
+ *  @fn                - getTimeoutStatus
  *
  *  @brief             - Get SD Command Timeout Status
  *
@@ -1079,13 +1080,13 @@ SD_States_t SD_GetState(SD_Handle_t* pSDHandle)
  *
  *  @note              - TIMEOUT_NON_EXPIRED or TIMEOUT_EXPIRED
  */
-static timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle)
+static timeout_status_t getTimeoutStatus(SD_Handle_t* pSDHandle)
 {
     return pSDHandle->cmdTimeout.Status;
 }
 
 /****************************************************************************************
- *  @fn                - SD_TimeoutConfig
+ *  @fn                - timeoutConfig
  *
  *  @brief             - Start Timeout for Command
  *
@@ -1096,7 +1097,7 @@ static timeout_status_t SD_GetTimeoutStatus(SD_Handle_t* pSDHandle)
  *
  *  @note              - 
  */
-static void SD_TimeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi)
+static void timeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi)
 {
     TIM_RegDef_t* sdTIM = pSDHandle->cmdTimeout.TimHandle.pTIMx;
 
@@ -1186,7 +1187,7 @@ uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle)
 /*******************       I/O Functions      *******************/
 
 /****************************************************************************************
- *	@fn 			     - SD_ChipSelectControl
+ *	@fn 			     - chipSelectControl
  *
  * 	@brief			     - Function to control SD chip select pin
  *
@@ -1197,7 +1198,7 @@ uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-static void SD_ChipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
+static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
 {
     GPIO_Handle_t cs = pSDHandle->ChipSelHandle;
 
