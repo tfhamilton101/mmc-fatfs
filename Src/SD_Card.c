@@ -1125,14 +1125,7 @@ static void SD_TimeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi)
  */
 bool SD_IsReady(SD_Handle_t* pSDHandle)
 {
-    if (SD_GetState(pSDHandle) == SD_STATE_READY)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+    return (SD_GetState(pSDHandle) == SD_STATE_READY);
 }
 
 /****************************************************************************************
