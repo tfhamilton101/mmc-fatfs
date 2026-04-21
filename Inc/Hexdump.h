@@ -8,7 +8,6 @@
 #ifndef INC_HEXDUMP_H_
 #define INC_HEXDUMP_H_
 
-#include "CS43L22.h"
 #include "FAT.h"
 #include "Utils.h"
 #include "stm32f407xx_usart_driver.h"
@@ -37,6 +36,5 @@ void HexdumpBuffer(uint8_t* buf, uint32_t bufSize);
 
 // Sub Functions
 dumpInfo_t FATdump(void* handle, uint32_t addr, uint32_t blocks);
-dumpInfo_t CodecDump(void* handle, uint32_t addr, uint32_t blocks);
 
 #endif /* INC_HEXDUMP_H_ */

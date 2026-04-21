@@ -179,18 +179,3 @@ dumpInfo_t FATdump(void* handle, uint32_t addr, uint32_t blocks)
     return info;
 }
 
-dumpInfo_t CodecDump(void* handle, uint32_t addr, uint32_t blocks)
-{
-    stereo_handle_t* StereoHandle = (stereo_handle_t*)handle;
-    dumpInfo_t info = {0};
-
-    // First Grab the dump info
-    info.blockSize = 64;
-    info.addrUnit = 64;
-    info.buffSize = 256;
-    info.pbuff = DumpBuf;
-
-    CodecRegRead(StereoHandle, addr, info.pbuff, 52);
-
-    return info;
-}
