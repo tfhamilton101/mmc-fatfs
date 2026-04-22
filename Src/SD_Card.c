@@ -244,39 +244,52 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
  * 	@brief			     - Function to initialize SPI peripheral
  *
  * 	@param[pSDHandle]	 - Handler structure for SD Card
+ * 	@param[pSPIx]		 - Base address of SPI peripheral
+ * 	@param[pTxDma]		 - Pointer to TX DMA handle
+ * 	@param[pRxDma]		 - Pointer to RX DMA handle
  *
  * 	@return			     - none
  *
  * 	@note
  */
-void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type, SPI_RegDef_t* pSPIx)
+void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma)
 {
-    if (type == SD_HARDWARE_SPI)
-    {
-        // Note: SD initialization must run at 100-400kHz
-        SPI_Handle_t* SPIx_handle = &pSDHandle->SPIHandle;
-
-        SPIx_handle->pSPIx = pSPIx;
-        SPIx_handle->SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
-        SPIx_handle->SPIConfig.SPI_BusConfig = SPI_BUS_CON_FD;
-        // Set the SPI clock to 312khz (20MHz/64)
-        SPIx_handle->SPIConfig.SPI_SclkDiv = SPI_FindClockDiv(pSPIx, 400000);
-        SPIx_handle->SPIConfig.SPI_DFF = SPI_DFF_8BITS;
-        SPIx_handle->SPIConfig.SPI_CPOL = SPI_CPOL_LOW;
-        SPIx_handle->SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
-        SPIx_handle->SPIConfig.SPI_SSM = SPI_SSM_EN;
-
-        // DMA Config
-        SPIx_handle->DMAConfig.RxBufDmaConfig = DISABLE;
-        SPIx_handle->DMAConfig.TxBufDmaConfig = DISABLE;
-
-        // Configure the peripheral
-        SPI_Init(SPIx_handle);
-    }
-    else if (type == SD_HARDWARE_SDIO)
+    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
     {
         // TODO: Write SDIO drivers
+        return;
     }
+
+    // Note: SD initialization must run at 100-400kHz
+    SPI_Handle_t* SPIx_handle = &pSDHandle->SPIHandle;
+
+    SPIx_handle->pSPIx = pSPIx;
+    SPIx_handle->SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
+    SPIx_handle->SPIConfig.SPI_BusConfig = SPI_BUS_CON_FD;
+    // Set the SPI clock to 312khz (20MHz/64)
+    SPIx_handle->SPIConfig.SPI_SclkDiv = SPI_FindClockDiv(pSPIx, 400000);
+    SPIx_handle->SPIConfig.SPI_DFF = SPI_DFF_8BITS;
+    SPIx_handle->SPIConfig.SPI_CPOL = SPI_CPOL_LOW;
+    SPIx_handle->SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
+    SPIx_handle->SPIConfig.SPI_SSM = SPI_SSM_EN;
+
+    if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+    {
+        SPIx_handle->DMAConfig.RxBufDmaConfig = DISABLE;
+        SPIx_handle->DMAConfig.TxBufDmaConfig = DISABLE;
+    }
+    else
+    {
+        SPIx_handle->DMAConfig.RxBufDmaConfig = ENABLE;
+        SPIx_handle->DMAConfig.TxBufDmaConfig = ENABLE;
+
+        // Assign DMA stream handlers
+        SPIx_handle->DMAConfig.pTxStream = pTxDma;
+        SPIx_handle->DMAConfig.pRxStream = pRxDma;
+    }
+
+    // Configure the peripheral
+    SPI_Init(SPIx_handle);
 }
 
 /****************************************************************************************
@@ -374,7 +387,7 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     }
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
-        //SPI_SendDataDMA(pSDHandle->SPIHandle.pSPIx, pData, len);
+        SPI_SendDataDma(&pSDHandle->SPIHandle, pData, len);
     }
 }
 
@@ -392,7 +405,7 @@ static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     }
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
-        //SPI_ReceiveDataDMA(pSDHandle->SPIHandle.pSPIx, pData, len);
+        SPI_ReceiveDataDma(&pSDHandle->SPIHandle, pData, len);
     }
 }
 
@@ -410,7 +423,7 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     }
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
-        //SPI_TransferDataDMA(pSDHandle->SPIHandle.pSPIx, pData, len);
+        SPI_MasterTransferDma(&pSDHandle->SPIHandle, pData, len);
     }
 }
 

@@ -190,7 +190,7 @@ void SD_Init(SD_Handle_t* pSDHandle);
 
 /*** Hardware Init Functions ***/
 void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo);
-void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type, SPI_RegDef_t* pSPIx);
+void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma);
 
 /* Read / Write function */
 sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
