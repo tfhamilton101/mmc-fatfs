@@ -233,6 +233,11 @@ static Command_Response_t readOcrRegister(SD_Handle_t* pSDHandle);
 static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle);
 static timeout_status_t getTimeoutStatus(SD_Handle_t* pSDHandle);
 
+/********		 SD Data Transfer Functions 		********/
+static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
+static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
+static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
+
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
  *
@@ -355,6 +360,60 @@ void SD_Init(SD_Handle_t* pSDHandle)
     }
 }
 
+static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
+{
+    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    {
+        // not implemented 
+        return;
+    }
+
+    if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+    {
+        SPI_SendData(pSDHandle->pSPIx, pData, len);
+    }
+    else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
+    {
+        //SPI_SendDataDMA(pSDHandle->pSPIx, pData, len);
+    }
+}
+
+static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
+{
+    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    {
+        // not implemented 
+        return;
+    }
+
+    if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+    {
+        SPI_ReceiveData(pSDHandle->pSPIx, pData, len);
+    }
+    else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
+    {
+        //SPI_ReceiveDataDMA(pSDHandle->pSPIx, pData, len);
+    }
+}
+
+static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
+{
+    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    {
+        // not implemented 
+        return;
+    }
+
+    if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+    {
+        SPI_MasterTransfer(pSDHandle->pSPIx, pData, len);
+    }
+    else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
+    {
+        //SPI_TransferDataDMA(pSDHandle->pSPIx, pData, len);
+    }
+}
+
 /****************************************************************************************
  *	@fn 			     - InitSpi
  *
@@ -472,7 +531,7 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
     SPI_UpdateDFF(pSDHandle->pSPIx, SPI_DFF_8BITS);
 
     /* Dummy clock (force DO hi-z for multiple slave SPI) */
-    SPI_SendData(pSDHandle->pSPIx, dummy_write, 2);
+    sendData(pSDHandle, dummy_write, 2);
 
     /****	6-bit Command Index	+ (Start & Transmission bit)	****/
     CommandFrame[0] = ((cmdID & 0x3F) | TRAN_BIT);
@@ -488,10 +547,10 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
     CommandFrame[5] = crc | STOP_BIT;
 
     // Transmit the Command Frame
-    SPI_SendData(pSDHandle->pSPIx, CommandFrame, COMMAND_FRAME_LEN);
+    sendData(pSDHandle, CommandFrame, COMMAND_FRAME_LEN);
 
     // Dummy Read
-    SPI_ReceiveData(pSDHandle->pSPIx, &dummy_read, 1);
+    receiveData(pSDHandle, &dummy_read, 1);
 
     if (cmdID == CMD8)
     {
@@ -582,7 +641,7 @@ static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Form
     // loop until the bus is not idle
     do
     {
-        SPI_MasterTransfer(pSDHandle->pSPIx, ResponsePtr, 1);
+        transferData(pSDHandle, ResponsePtr, 1);
         count++;
     } while ((*ResponsePtr == 0xFF) && (count < (NCR_BYTES + 1)));
 
@@ -590,7 +649,7 @@ static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Form
     {
         ResponsePtr++;
         // Read in the 32-bit extended command
-        SPI_MasterTransfer(pSDHandle->pSPIx, ResponsePtr, 4);
+        transferData(pSDHandle, ResponsePtr, 4);
     }
 
     return parseResponse(CmdResponse, Format);
@@ -611,7 +670,7 @@ static void waitBusyState(SD_Handle_t* pSDHandle, uint8_t* response)
 {
     // R1b response is an R1 response followed by an optional busy state.
     // The card will hold MISO low until the card is done processing the current task
-    SPI_MasterTransfer(pSDHandle->pSPIx, response, 1);
+    transferData(pSDHandle, response, 1);
 
     // Start Cmd Timeout
     timeoutConfig(pSDHandle, ENABLE);
@@ -620,7 +679,7 @@ static void waitBusyState(SD_Handle_t* pSDHandle, uint8_t* response)
 
     do
     {
-        SPI_MasterTransfer(pSDHandle->pSPIx, &idle, 1);
+        transferData(pSDHandle, &idle, 1);
     } while ((idle != 0xFF) && (getTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
 
     // Stop Cmd Timeout
@@ -688,7 +747,7 @@ static void runPowerSequence(SD_Handle_t* pSDHandle)
     uint8_t data = 0xFF;
     for (n = 0; n < 15; n++)
     {
-        SPI_SendData(pSDHandle->pSPIx, &data, 1);
+        sendData(pSDHandle, &data, 1);
     }
 }
 
@@ -880,7 +939,7 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
             // Read Until data Command Token Arrives
             do
             {
-                SPI_MasterTransfer(pSDHandle->pSPIx, &token, 1);
+                transferData(pSDHandle, &token, 1);
             } while ((token != BLOCK_READ_TOKEN) && (getTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
 
             // Stop Cmd Timeout
@@ -901,10 +960,10 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
             SPI_UpdateDFF(pSDHandle->pSPIx, SPI_DFF_16BITS);
 
             // Read the data block
-            SPI_MasterTransfer(pSDHandle->pSPIx, rxBuffer, SD_DEFAULT_BLOCK_SIZE);
+            transferData(pSDHandle, rxBuffer, SD_DEFAULT_BLOCK_SIZE);
 
             // Receive the 16-bit checksum
-            SPI_MasterTransfer(pSDHandle->pSPIx, CRC, 2);
+            transferData(pSDHandle, CRC, 2);
 
             // Switch back to 8-bit Mode
             SPI_UpdateDFF(pSDHandle->pSPIx, SPI_DFF_8BITS);
@@ -988,23 +1047,23 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
         uint8_t dataResp;
 
         // Must wait at least one byte before transferring Data Packet
-        SPI_MasterTransfer(pSDHandle->pSPIx, dummy, 1);
+        transferData(pSDHandle, dummy, 1);
 
         for (n = 0; n < BlockCount; n++, TxBuffer += SD_DEFAULT_BLOCK_SIZE)
         {
             uint8_t token = (BlockCount == 1) ? SINGLE_BLOCK_WRITE_TOKEN : MULT_BLOCK_WRITE_TOKEN;
 
             // Transfer Data Token
-            SPI_SendData(pSDHandle->pSPIx, &token, 1);
+            sendData(pSDHandle, &token, 1);
 
             // Send Data Block
-            SPI_SendData(pSDHandle->pSPIx, TxBuffer, SD_DEFAULT_BLOCK_SIZE);
+            sendData(pSDHandle, TxBuffer, SD_DEFAULT_BLOCK_SIZE);
 
             // Transfer CRC16
-            SPI_SendData(pSDHandle->pSPIx, CRC, 2);
+            sendData(pSDHandle, CRC, 2);
 
             // Dummy Read for CRC16
-            SPI_ReceiveData(pSDHandle->pSPIx, dummy, 1);
+            receiveData(pSDHandle, dummy, 1);
 
             // Wait for Card to process the command
             waitBusyState(pSDHandle, &dataResp);
@@ -1026,10 +1085,10 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
             uint8_t stopToken = STOP_WRITE_TOKEN;
 
             // Transfer Stop Data Token
-            SPI_SendData(pSDHandle->pSPIx, &stopToken, 1);
+            sendData(pSDHandle, &stopToken, 1);
 
             // Dummy Read
-            SPI_ReceiveData(pSDHandle->pSPIx, dummy, 1);
+            receiveData(pSDHandle, dummy, 1);
 
             // Start Wait for busy state to conclude
             waitBusyState(pSDHandle, dummy);
