@@ -11,6 +11,15 @@
 #include <string.h>
 #include "stm32f407xx_dma_driver.h"
 
+
+/************************************************************************************
+ *                          SD Card Buffer Definitions
+ *************************************************************************************/
+
+// The SD RX buffer size must be a Powers of 2 multiple of the default block side
+#define SD_BUFFER_SIZE (32 * SD_DEFAULT_BLOCK_SIZE)
+
+
 /************************************************************************* 
  *                         SD Command Typedefs                           * 
  *************************************************************************/
@@ -71,7 +80,6 @@ typedef enum
     RESPONSE_R3 = 3,
     RESPONSE_R7 = 7,
 } sd_response_t;
-
 
 
 /************************************************************************************
@@ -238,6 +246,12 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 
+
+/*** Private Variables ***/
+// RX Buffer for SD Reads
+static uint8_t SD_BuffA[SD_BUFFER_SIZE];
+static uint8_t SD_BuffB[SD_BUFFER_SIZE];
+
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
  *
@@ -352,25 +366,31 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
  */
 void SD_Init(SD_Handle_t* pSDHandle)
 {
-    if (pSDHandle->SD_Mode == SD_MODE_SPI)
+    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
     {
-        if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
-        {
-            pSDHandle->SD_CardState = SD_STATE_NO_CARD;
-        }
-        else if (InitSpi(pSDHandle) == INIT_SUCCESS)
-        {
-            pSDHandle->SD_CardState = SD_STATE_READY;
-        }
-        else
-        {
-            pSDHandle->SD_CardState = SD_STATE_FAIL;
-        }
+        // not implemented
+        return;
     }
-    else if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+
+    // Configure SD buffer into
+    pSDHandle->bufferInfo.pBufA = SD_BuffA;
+    pSDHandle->bufferInfo.pBufB = SD_BuffB;
+    pSDHandle->bufferInfo.pCurrBuf = SD_BuffA;
+    pSDHandle->bufferInfo.Size = SD_BUFFER_SIZE;
+
+    if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
-        //TODO: Write SDIO driver
+        pSDHandle->SD_CardState = SD_STATE_NO_CARD;
     }
+    else if (InitSpi(pSDHandle) == INIT_SUCCESS)
+    {
+        pSDHandle->SD_CardState = SD_STATE_READY;
+    }
+    else
+    {
+        pSDHandle->SD_CardState = SD_STATE_FAIL;
+    }
+
 }
 
 static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
