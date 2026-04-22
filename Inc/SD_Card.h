@@ -121,7 +121,7 @@ typedef struct
     SD_States_t SD_CardState;         /*!  < possible values from @SD_CardState>     */
     sd_trans_modes_t SD_TransferMode; /*   < possible values from @SD_TransferMode   */
     bufferInfo_t bufferInfo;          /*   Buffer Info Structure                     */
-    SPI_RegDef_t* pSPIx;              /*   Holds the base address SPIx  peripheral   */
+    SPI_Handle_t SPIHandle;           /*   SPI Handle Structure                      */
     GPIO_Handle_t ChipSelHandle;      /*   Handler Chip select GPIOx                 */
     GPIO_Handle_t CardDetHandle;      /*   Handler Card Detect GPIOx                 */
     gpio_pin_state_t CardDetPol;      /*   SD Card detect polarity                   */
@@ -190,7 +190,7 @@ void SD_Init(SD_Handle_t* pSDHandle);
 
 /*** Hardware Init Functions ***/
 void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo);
-void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type);
+void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type, SPI_RegDef_t* pSPIx);
 
 /* Read / Write function */
 sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);

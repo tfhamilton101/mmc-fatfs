@@ -249,29 +249,29 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
  *
  * 	@note
  */
-void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type)
+void SD_Init_Hardware(SD_Handle_t* pSDHandle, sd_hardware_type_t type, SPI_RegDef_t* pSPIx)
 {
     if (type == SD_HARDWARE_SPI)
     {
         // Note: SD initialization must run at 100-400kHz
-        SPI_Handle_t SPIx_handle;
+        SPI_Handle_t* SPIx_handle = &pSDHandle->SPIHandle;
 
-        SPIx_handle.pSPIx = pSDHandle->pSPIx;
-        SPIx_handle.SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
-        SPIx_handle.SPIConfig.SPI_BusConfig = SPI_BUS_CON_FD;
+        SPIx_handle->pSPIx = pSPIx;
+        SPIx_handle->SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
+        SPIx_handle->SPIConfig.SPI_BusConfig = SPI_BUS_CON_FD;
         // Set the SPI clock to 312khz (20MHz/64)
-        SPIx_handle.SPIConfig.SPI_SclkDiv = SPI_FindClockDiv(pSDHandle->pSPIx, 400000);
-        SPIx_handle.SPIConfig.SPI_DFF = SPI_DFF_8BITS;
-        SPIx_handle.SPIConfig.SPI_CPOL = SPI_CPOL_LOW;
-        SPIx_handle.SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
-        SPIx_handle.SPIConfig.SPI_SSM = SPI_SSM_EN;
+        SPIx_handle->SPIConfig.SPI_SclkDiv = SPI_FindClockDiv(pSPIx, 400000);
+        SPIx_handle->SPIConfig.SPI_DFF = SPI_DFF_8BITS;
+        SPIx_handle->SPIConfig.SPI_CPOL = SPI_CPOL_LOW;
+        SPIx_handle->SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
+        SPIx_handle->SPIConfig.SPI_SSM = SPI_SSM_EN;
 
         // DMA Config
-        SPIx_handle.DMAConfig.RxBufDmaConfig = DISABLE;
-        SPIx_handle.DMAConfig.TxBufDmaConfig = DISABLE;
+        SPIx_handle->DMAConfig.RxBufDmaConfig = DISABLE;
+        SPIx_handle->DMAConfig.TxBufDmaConfig = DISABLE;
 
         // Configure the peripheral
-        SPI_Init(&SPIx_handle);
+        SPI_Init(SPIx_handle);
     }
     else if (type == SD_HARDWARE_SDIO)
     {
@@ -370,11 +370,11 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 
     if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
     {
-        SPI_SendData(pSDHandle->pSPIx, pData, len);
+        SPI_SendData(pSDHandle->SPIHandle.pSPIx, pData, len);
     }
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
-        //SPI_SendDataDMA(pSDHandle->pSPIx, pData, len);
+        //SPI_SendDataDMA(pSDHandle->SPIHandle.pSPIx, pData, len);
     }
 }
 
@@ -388,11 +388,11 @@ static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 
     if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
     {
-        SPI_ReceiveData(pSDHandle->pSPIx, pData, len);
+        SPI_ReceiveData(pSDHandle->SPIHandle.pSPIx, pData, len);
     }
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
-        //SPI_ReceiveDataDMA(pSDHandle->pSPIx, pData, len);
+        //SPI_ReceiveDataDMA(pSDHandle->SPIHandle.pSPIx, pData, len);
     }
 }
 
@@ -406,11 +406,11 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 
     if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
     {
-        SPI_MasterTransfer(pSDHandle->pSPIx, pData, len);
+        SPI_MasterTransfer(pSDHandle->SPIHandle.pSPIx, pData, len);
     }
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
-        //SPI_TransferDataDMA(pSDHandle->pSPIx, pData, len);
+        //SPI_TransferDataDMA(pSDHandle->SPIHandle.pSPIx, pData, len);
     }
 }
 
@@ -430,10 +430,10 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
     Command_Response_t CmdResponse = {0};
 
     // Reduce SPI Clock frequency incase this is an re-init
-    SPI_UpdateClockFreq(pSDHandle->pSPIx, 400000);
+    SPI_UpdateClockFreq(pSDHandle->SPIHandle.pSPIx, 400000);
 
     // Enable the SPI Peripheral
-    SPI_PeripheralControl(pSDHandle->pSPIx, ENABLE);
+    SPI_PeripheralControl(pSDHandle->SPIHandle.pSPIx, ENABLE);
 
     /*********      Send Power Sequence    ********/
     runPowerSequence(pSDHandle);
@@ -499,7 +499,7 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
     chipSelectControl(pSDHandle, HIGH);
 
     // Update SPI Clock frequency for higher performance
-    SPI_UpdateClockFreq(pSDHandle->pSPIx, 50000000);
+    SPI_UpdateClockFreq(pSDHandle->SPIHandle.pSPIx, 50000000);
     
     return INIT_SUCCESS;
 }
@@ -528,7 +528,7 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
     uint8_t CommandFrame[COMMAND_FRAME_LEN] = {0};
 
     // Ensure the SPI Peripheral is in 8-bit mode
-    SPI_UpdateDFF(pSDHandle->pSPIx, SPI_DFF_8BITS);
+    SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
 
     /* Dummy clock (force DO hi-z for multiple slave SPI) */
     sendData(pSDHandle, dummy_write, 2);
@@ -628,7 +628,7 @@ static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Form
     uint8_t* ResponsePtr = CmdResponse;
 
     // Wait until SPI peripheral is not busy
-    while (SPI_GetFlagStatus(pSDHandle->pSPIx, SPI_FLAG_BSY))
+    while (SPI_GetFlagStatus(pSDHandle->SPIHandle.pSPIx, SPI_FLAG_BSY))
     {
     }
 
@@ -957,7 +957,7 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
             }
 
             // Update SPI Peripheral to 16-bit for faster block read
-            SPI_UpdateDFF(pSDHandle->pSPIx, SPI_DFF_16BITS);
+            SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_16BITS);
 
             // Read the data block
             transferData(pSDHandle, rxBuffer, SD_DEFAULT_BLOCK_SIZE);
@@ -966,7 +966,7 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
             transferData(pSDHandle, CRC, 2);
 
             // Switch back to 8-bit Mode
-            SPI_UpdateDFF(pSDHandle->pSPIx, SPI_DFF_8BITS);
+            SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
         }
 
         if (BlockCount > 1)
@@ -1262,7 +1262,7 @@ static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
     GPIO_Handle_t cs = pSDHandle->ChipSelHandle;
 
     // Wait until SPI peripheral is not busy
-    while (SPI_GetFlagStatus(pSDHandle->pSPIx, SPI_FLAG_BSY) == FLAG_SET)
+    while (SPI_GetFlagStatus(pSDHandle->SPIHandle.pSPIx, SPI_FLAG_BSY) == FLAG_SET)
     {
     }
 
