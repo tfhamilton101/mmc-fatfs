@@ -795,14 +795,10 @@ static void runPowerSequence(SD_Handle_t* pSDHandle)
  */
 static Command_Response_t goIdleState(SD_Handle_t* pSDHandle)
 {
-    Command_Response_t CmdResponse = {0};
-
     /*******   		Software reset (GO_IDLE_STATE)		*****/
     /**   CMD0 tells the card to use the SPI interface.     **/
     /** This cannot be changed once the part is powered on  **/
-    CmdResponse = SendCommand(pSDHandle, CMD0, CMD_ARG_NULL, CMD0_CRC);
-
-    return CmdResponse;
+    return SendCommand(pSDHandle, CMD0, CMD_ARG_NULL, CMD0_CRC);
 }
 
 /****************************************************************************************
@@ -818,12 +814,8 @@ static Command_Response_t goIdleState(SD_Handle_t* pSDHandle)
  */
 static Command_Response_t checkSupplyRange(SD_Handle_t* pSDHandle)
 {
-    Command_Response_t CmdResponse = {0};
-
     /*******   Check Supply Range (checkSupplyRange)	*****/
-    CmdResponse = SendCommand(pSDHandle, CMD8, CMD8_ARG, CMD8_CRC);
-
-    return CmdResponse;
+    return SendCommand(pSDHandle, CMD8, CMD8_ARG, CMD8_CRC);
 }
 
 /****************************************************************************************
@@ -839,14 +831,10 @@ static Command_Response_t checkSupplyRange(SD_Handle_t* pSDHandle)
  */
 static Command_Response_t sendOpCond(SD_Handle_t* pSDHandle)
 {
-    Command_Response_t CmdResponse = {0};
-
     /* Send host capacity support information (HCS) and
 	 *  asks the card to send its operating condition register (OCR)
 	 * content in the response on the CMD line	*/
-    CmdResponse = SendAppCommand(pSDHandle, ACMD41, ACMD41_ARG, CMD_CRC_NULL);
-
-    return CmdResponse;
+    return SendAppCommand(pSDHandle, ACMD41, ACMD41_ARG, CMD_CRC_NULL);
 }
 
 /****************************************************************************************
@@ -862,15 +850,11 @@ static Command_Response_t sendOpCond(SD_Handle_t* pSDHandle)
  */
 static Command_Response_t readOcrRegister(SD_Handle_t* pSDHandle)
 {
-    Command_Response_t CmdResponse = {0};
-
     /* Reads the OCR register of a card. CCS bit is assigned to OCR[30]
 	 * The 32-bit operation conditions register stores the VDD voltage profile
 	 * of the card.	Additionally, this register includes status information bits
 	 * The Card power up status bit is set if the power up procedure has finished */
-    CmdResponse = SendCommand(pSDHandle, CMD58, CMD_ARG_NULL, CMD_CRC_NULL);
-
-    return CmdResponse;
+    return SendCommand(pSDHandle, CMD58, CMD_ARG_NULL, CMD_CRC_NULL);
 }
 
 /****************************************************************************************
@@ -886,14 +870,10 @@ static Command_Response_t readOcrRegister(SD_Handle_t* pSDHandle)
  */
 static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
 {
-    Command_Response_t CmdResponse = {0};
-
     /* For SDSC Card, block length is set by this command
 	 * For SDHC and SDXC Cards, block length of the memory
 	 * access commands are fixed to 512 bytes */
-    CmdResponse = SendCommand(pSDHandle, CMD16, CMD16_ARG, CMD_CRC_NULL);
-
-    return CmdResponse;
+    return SendCommand(pSDHandle, CMD16, CMD16_ARG, CMD_CRC_NULL);
 }
 
 /**********************************************************************************************
