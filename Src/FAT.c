@@ -188,11 +188,17 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
  */
 void InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
 {
-    // Init SD Card
-    SD_Init(pSDHandle);
-
     // Link SD handler to FAT handler
     pFAT->pSDHandle = pSDHandle;
+
+    // Init SD Card
+    SD_States_t status = SD_Init(pSDHandle);
+
+    if (status != SD_STATE_READY)
+    {
+        pFAT->FAT_Stat = INIT_FAT_FAIL;
+        return;
+    }
 
     // Read FAT system parameters from Boot sector
     FAT_GetSystemInfo(pFAT);

@@ -183,7 +183,7 @@ typedef enum
  *************************************************************************************/
 
 /* Init and De-init */
-void SD_Init(SD_Handle_t* pSDHandle);
+SD_States_t SD_Init(SD_Handle_t* pSDHandle);
 
 /*** Hardware Init Functions ***/
 void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo);

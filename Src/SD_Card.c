@@ -364,12 +364,12 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
  *
  * 	@note
  */
-void SD_Init(SD_Handle_t* pSDHandle)
+SD_States_t SD_Init(SD_Handle_t* pSDHandle)
 {
     if (pSDHandle->SD_Mode == SD_MODE_SDIO)
     {
         // not implemented
-        return;
+        return SD_STATE_FAIL;
     }
 
     // Configure SD buffer into
@@ -378,23 +378,23 @@ void SD_Init(SD_Handle_t* pSDHandle)
     pSDHandle->bufferInfo.pCurrBuf = SD_BuffA;
     pSDHandle->bufferInfo.Size = SD_BUFFER_SIZE;
 
+    SD_States_t initState = SD_STATE_FAIL;
+
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
-        pSDHandle->SD_CardState = SD_STATE_NO_CARD;
-        return;
+        initState = SD_STATE_NO_CARD;
     }
-
-    SD_Init_States_t initState = InitSpi(pSDHandle);
-    
-    if (initState == INIT_SUCCESS)
+    else if (InitSpi(pSDHandle) == INIT_SUCCESS)
     {
-        pSDHandle->SD_CardState = SD_STATE_READY;
-        return;
+        initState = SD_STATE_READY;
+    }
+    else
+    {
+        initState = SD_STATE_FAIL;
     }
 
-
-    pSDHandle->SD_CardState = SD_STATE_FAIL;
-    return;
+    pSDHandle->SD_CardState = initState;
+    return initState;
 }
 
 static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
@@ -921,28 +921,18 @@ static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
  */
 sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
 {
-    Command_Response_t CmdResponse = {0};
-
     if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
     {
         return SD_READ_WRITE_FAIL;
     }
-    if (BlockCount == 1)
-    {
-        // Assert chip select low
-        chipSelectControl(pSDHandle, LOW);
 
-        /*******   READ_SINGLE_BLOCK	*****/
-        CmdResponse = SendCommand(pSDHandle, CMD17, BlockAddr, CMD_CRC_NULL);
-    }
-    else
-    {
-        // Assert chip select low
-        chipSelectControl(pSDHandle, LOW);
+    // Assert chip select low
+    chipSelectControl(pSDHandle, LOW);
 
-        /*******    READ_MULTIPLE_BLOCK  	*****/
-        CmdResponse = SendCommand(pSDHandle, CMD18, BlockAddr, CMD_CRC_NULL);
-    }
+    // READ_SINGLE_BLOCK or READ_MULTIPLE_BLOCK command depending on block count
+    sd_cmd_ID_t cmdID = (BlockCount == 1) ? CMD17 : CMD18;
+
+    Command_Response_t CmdResponse = SendCommand(pSDHandle, cmdID, BlockAddr, CMD_CRC_NULL);
 
     // Confirm command was successful. All flags will be cleared
     if (CmdResponse.R1.Flags != 0x00)
@@ -952,69 +942,66 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
     }
 
     /***   Receive Block Read    ****/
-    if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA || pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+
+    /*            Data Packet Format
+        * ----------------------------------------
+        * |Data Token |  Data Block    | CRC16   |
+        * ----------------------------------------
+        * | 1 byte   | 1 - 2048 bytes | 2 bytes  |
+        * ----------------------------------------
+        */
+
+    uint8_t* rxBuffer = SD_GetBuffAddr(pSDHandle);
+    uint8_t CRC[2];
+
+    for (uint32_t n = 0; n < BlockCount; n++, rxBuffer += SD_DEFAULT_BLOCK_SIZE)
     {
-        /*            Data Packet Format
-         * ----------------------------------------
-         * |Data Token |  Data Block    | CRC16   |
-         * ----------------------------------------
-         * | 1 byte   | 1 - 2048 bytes | 2 bytes  |
-         * ----------------------------------------
-         */
+        uint8_t token = 0xFF;
 
-        uint8_t* rxBuffer = SD_GetBuffAddr(pSDHandle);
-        uint8_t CRC[2];
-        uint16_t n;
+        // Start Cmd Timeout
+        timeoutConfig(pSDHandle, ENABLE);
 
-        for (n = 0; n < BlockCount; n++, rxBuffer += SD_DEFAULT_BLOCK_SIZE)
+        // Read Until data Command Token Arrives
+        do
         {
-            uint8_t token = 0xFF;
+            transferData(pSDHandle, &token, 1);
+        } while ((token != BLOCK_READ_TOKEN) && (getTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
 
-            // Start Cmd Timeout
-            timeoutConfig(pSDHandle, ENABLE);
+        // Stop Cmd Timeout
+        timeoutConfig(pSDHandle, DISABLE);
 
-            // Read Until data Command Token Arrives
-            do
-            {
-                transferData(pSDHandle, &token, 1);
-            } while ((token != BLOCK_READ_TOKEN) && (getTimeoutStatus(pSDHandle) != TIMEOUT_EXPIRED));
+        // Error Handling
+        if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
+        {
+            // Release chip select
+            chipSelectControl(pSDHandle, HIGH);
 
-            // Stop Cmd Timeout
-            timeoutConfig(pSDHandle, DISABLE);
-
-            // Error Handling
-            if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
-            {
-                // Release chip select
-                chipSelectControl(pSDHandle, HIGH);
-
-                // Set Fail flags
-                pSDHandle->SD_CardState = SD_STATE_FAIL;
-                return SD_READ_WRITE_FAIL;
-            }
-
-            // Update SPI Peripheral to 16-bit for faster block read
-            SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_16BITS);
-
-            // Read the data block
-            transferData(pSDHandle, rxBuffer, SD_DEFAULT_BLOCK_SIZE);
-
-            // Receive the 16-bit checksum
-            transferData(pSDHandle, CRC, 2);
-
-            // Switch back to 8-bit Mode
-            SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
+            // Set Fail flags
+            pSDHandle->SD_CardState = SD_STATE_FAIL;
+            return SD_READ_WRITE_FAIL;
         }
 
-        if (BlockCount > 1)
-        {
-            /*******    STOP_TRANSMISSION  	*****/
-            CmdResponse = SendCommand(pSDHandle, CMD12, CMD_ARG_NULL, CMD_CRC_NULL);
-        }
+        // // Update SPI Peripheral to 16-bit for faster block read
+        // SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_16BITS);
 
-        // Release chip select
-        chipSelectControl(pSDHandle, HIGH);
+        // Read the data block
+        transferData(pSDHandle, rxBuffer, SD_DEFAULT_BLOCK_SIZE);
+
+        // Receive the 16-bit checksum
+        transferData(pSDHandle, CRC, 2);
+
+        // // Switch back to 8-bit Mode
+        // SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
     }
+
+    if (BlockCount > 1)
+    {
+        /*******    STOP_TRANSMISSION  	*****/
+        CmdResponse = SendCommand(pSDHandle, CMD12, CMD_ARG_NULL, CMD_CRC_NULL);
+    }
+
+    // Release chip select
+    chipSelectControl(pSDHandle, HIGH);
 
     return SD_READ_WRITE_SUCCESS;
 }
