@@ -777,12 +777,9 @@ static void runPowerSequence(SD_Handle_t* pSDHandle)
     /****** Send 80 dummy clock cycles with CI & MOSI high  ******/
     chipSelectControl(pSDHandle, HIGH);
 
-    uint8_t n;
-    uint8_t data = 0xFF;
-    for (n = 0; n < 15; n++)
-    {
-        sendData(pSDHandle, &data, 1);
-    }
+    uint8_t dummy_write[15];
+    memset(dummy_write, 0xFF, sizeof(dummy_write));
+    sendData(pSDHandle, dummy_write, sizeof(dummy_write));
 }
 
 /****************************************************************************************
