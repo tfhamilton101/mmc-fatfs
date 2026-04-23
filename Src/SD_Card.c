@@ -381,16 +381,20 @@ void SD_Init(SD_Handle_t* pSDHandle)
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
         pSDHandle->SD_CardState = SD_STATE_NO_CARD;
-    }
-    else if (InitSpi(pSDHandle) == INIT_SUCCESS)
-    {
-        pSDHandle->SD_CardState = SD_STATE_READY;
-    }
-    else
-    {
-        pSDHandle->SD_CardState = SD_STATE_FAIL;
+        return;
     }
 
+    SD_Init_States_t initState = InitSpi(pSDHandle);
+    
+    if (initState == INIT_SUCCESS)
+    {
+        pSDHandle->SD_CardState = SD_STATE_READY;
+        return;
+    }
+
+
+    pSDHandle->SD_CardState = SD_STATE_FAIL;
+    return;
 }
 
 static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
