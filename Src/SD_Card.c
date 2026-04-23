@@ -409,7 +409,7 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     {
         SPI_SendDataDma(&pSDHandle->SPIHandle, pData, len);
 
-        SPI_CompleteDmaTransfer(pSDHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
+        SPI_CompleteDmaTransfer(&pSDHandle->SPIHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
     }
 }
 
@@ -441,8 +441,9 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     {
         SPI_MasterTransferDma(&pSDHandle->SPIHandle, pData, len);
 
-        SPI_CompleteDmaTransfer(pSDHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
-        SPI_CompleteDmaTransfer(pSDHandle, pSDHandle->SPIHandle.DMAConfig.pRxStream);
+        
+        SPI_CompleteDmaTransfer(&pSDHandle->SPIHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
+        SPI_CompleteDmaTransfer(&pSDHandle->SPIHandle, pSDHandle->SPIHandle.DMAConfig.pRxStream);
     }
 }
 
