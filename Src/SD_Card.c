@@ -995,31 +995,19 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
  */
 sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
 {
-    Command_Response_t CmdResponse = {0};
-
     if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
     {
         return SD_READ_WRITE_FAIL;
     }
+
+    // Assert chip select low
+    chipSelectControl(pSDHandle, LOW);
+
+    // READ_SINGLE_BLOCK or READ_MULTIPLE_BLOCK command depending on block count
+    sd_cmd_ID_t cmdID = (BlockCount == 1) ? CMD24 : CMD25;
     
-    if (BlockCount == 1)
-    {
-        // Assert chip select low
-        chipSelectControl(pSDHandle, LOW);
-
-        /*****   WRITE_BLOCK	*****/
-        CmdResponse = SendCommand(pSDHandle, CMD24, BlockAddr, CMD_CRC_NULL);
-    }
-    else
-    {
-        // Assert chip select low
-        chipSelectControl(pSDHandle, LOW);
-
-        // TODO: Verify multiblock write
-        /*****     WRITE_MULTIPLE_BLOCK  	*****/
-        CmdResponse = SendCommand(pSDHandle, CMD25, BlockAddr, CMD_CRC_NULL);
-    }
-
+    Command_Response_t CmdResponse = SendCommand(pSDHandle, cmdID, BlockAddr, CMD_CRC_NULL);
+    
     // Confirm command was successful. All flags will be cleared
     if (CmdResponse.R1.Flags != 0x00)
     {
@@ -1028,82 +1016,77 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
     }
 
     /***   Receive Block Read    ****/
-    if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA || pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+
+    /*            Data Packet Format
+        * ----------------------------------------
+        * |Data Token |  Data Block    | CRC16   |
+        * ----------------------------------------
+        * | 1 byte   | 1 - 2048 bytes | 2 bytes  |
+        * ----------------------------------------
+        */
+
+    uint8_t* TxBuffer = SD_GetBuffAddr(pSDHandle);
+    uint8_t dummy[2] = {0xFF, 0xFF};
+    uint8_t CRC[2] = {0xFF, 0xFF};
+    uint8_t dataResp;
+
+    // Must wait at least one byte before transferring Data Packet
+    transferData(pSDHandle, dummy, 1);
+
+    for (uint32_t n = 0; n < BlockCount; n++, TxBuffer += SD_DEFAULT_BLOCK_SIZE)
     {
-        /*            Data Packet Format
-         * ----------------------------------------
-         * |Data Token |  Data Block    | CRC16   |
-         * ----------------------------------------
-         * | 1 byte   | 1 - 2048 bytes | 2 bytes  |
-         * ----------------------------------------
-         */
+        uint8_t token = (BlockCount == 1) ? SINGLE_BLOCK_WRITE_TOKEN : MULT_BLOCK_WRITE_TOKEN;
 
-        uint8_t* TxBuffer = SD_GetBuffAddr(pSDHandle);
-        uint8_t dummy[2] = {0xFF, 0xFF};
-        uint8_t CRC[2] = {0xFF, 0xFF};
-        uint16_t n;
-        uint8_t dataResp;
+        // Transfer Data Token
+        sendData(pSDHandle, &token, 1);
 
-        // Must wait at least one byte before transferring Data Packet
-        transferData(pSDHandle, dummy, 1);
+        // Send Data Block
+        sendData(pSDHandle, TxBuffer, SD_DEFAULT_BLOCK_SIZE);
 
-        for (n = 0; n < BlockCount; n++, TxBuffer += SD_DEFAULT_BLOCK_SIZE)
+        // Transfer CRC16
+        sendData(pSDHandle, CRC, 2);
+
+        // Dummy Read for CRC16
+        receiveData(pSDHandle, dummy, 1);
+
+        // Wait for Card to process the command
+        waitBusyState(pSDHandle, &dataResp);
+
+        // Error Handling
+        if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED || (dataResp != WRITE_DATA_ACCEPTED))
         {
-            uint8_t token = (BlockCount == 1) ? SINGLE_BLOCK_WRITE_TOKEN : MULT_BLOCK_WRITE_TOKEN;
+            // Release chip select
+            chipSelectControl(pSDHandle, HIGH);
 
-            // Transfer Data Token
-            sendData(pSDHandle, &token, 1);
-
-            // Send Data Block
-            sendData(pSDHandle, TxBuffer, SD_DEFAULT_BLOCK_SIZE);
-
-            // Transfer CRC16
-            sendData(pSDHandle, CRC, 2);
-
-            // Dummy Read for CRC16
-            receiveData(pSDHandle, dummy, 1);
-
-            // Wait for Card to process the command
-            waitBusyState(pSDHandle, &dataResp);
-
-            // Error Handling
-            if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED || (dataResp != WRITE_DATA_ACCEPTED))
-            {
-                // Release chip select
-                chipSelectControl(pSDHandle, HIGH);
-
-                // Set Fail flags
-                pSDHandle->SD_CardState = SD_STATE_FAIL;
-                return SD_READ_WRITE_FAIL;
-            }
+            // Set Fail flags
+            pSDHandle->SD_CardState = SD_STATE_FAIL;
+            return SD_READ_WRITE_FAIL;
         }
-
-        if (BlockCount > 1)
-        {
-            uint8_t stopToken = STOP_WRITE_TOKEN;
-
-            // Transfer Stop Data Token
-            sendData(pSDHandle, &stopToken, 1);
-
-            // Dummy Read
-            receiveData(pSDHandle, dummy, 1);
-
-            // Start Wait for busy state to conclude
-            waitBusyState(pSDHandle, dummy);
-        }
-
-        // Release chip select
-        chipSelectControl(pSDHandle, HIGH);
     }
+
+    if (BlockCount > 1)
+    {
+        uint8_t stopToken = STOP_WRITE_TOKEN;
+
+        // Transfer Stop Data Token
+        sendData(pSDHandle, &stopToken, 1);
+
+        // Dummy Read
+        receiveData(pSDHandle, dummy, 1);
+
+        // Start Wait for busy state to conclude
+        waitBusyState(pSDHandle, dummy);
+    }
+
+    // Release chip select
+    chipSelectControl(pSDHandle, HIGH);
 
     if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
     {
         return SD_READ_WRITE_FAIL;
     }
-    else
-    {
-        return SD_READ_WRITE_SUCCESS;
-    }
+
+    return SD_READ_WRITE_SUCCESS;
 }
 
 /**********************************************************************************************
