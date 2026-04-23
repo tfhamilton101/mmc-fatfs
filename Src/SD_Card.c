@@ -408,6 +408,8 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
         SPI_SendDataDma(&pSDHandle->SPIHandle, pData, len);
+
+        SPI_CompleteDmaTransfer(pSDHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
     }
 }
 
@@ -419,14 +421,8 @@ static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
         return;
     }
 
-    if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
-    {
-        SPI_ReceiveData(pSDHandle->SPIHandle.pSPIx, pData, len);
-    }
-    else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
-    {
-        SPI_ReceiveDataDma(&pSDHandle->SPIHandle, pData, len);
-    }
+    // Both DMA and non-DMA receive can use the polling method
+    SPI_ReceiveData(pSDHandle->SPIHandle.pSPIx, pData, len);
 }
 
 static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
@@ -444,6 +440,9 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     else if (pSDHandle->SD_TransferMode == SD_TRANSFER_DMA)
     {
         SPI_MasterTransferDma(&pSDHandle->SPIHandle, pData, len);
+
+        SPI_CompleteDmaTransfer(pSDHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
+        SPI_CompleteDmaTransfer(pSDHandle, pSDHandle->SPIHandle.DMAConfig.pRxStream);
     }
 }
 
