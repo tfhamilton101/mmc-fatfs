@@ -557,12 +557,8 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
  */
 static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID, uint32_t argument, sd_cmd_crc_t crc)
 {
-    Command_Response_t CmdResponse = {0};
-    uint8_t dummy_write[2] = {0xFF, 0xFF};
     uint8_t dummy_read;
-
-    /**** First Construct the Command Frame  ****/
-    uint8_t CommandFrame[COMMAND_FRAME_LEN] = {0};
+    uint8_t dummy_write[2] = {0xFF, 0xFF};
 
     // Ensure the SPI Peripheral is in 8-bit mode
     SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
@@ -570,37 +566,38 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
     /* Dummy clock (force DO hi-z for multiple slave SPI) */
     sendData(pSDHandle, dummy_write, 2);
 
-    /****	6-bit Command Index	+ (Start & Transmission bit)	****/
-    CommandFrame[0] = ((cmdID & 0x3F) | TRAN_BIT);
-
-    /****	Copy over the argument	****/
-    CommandFrame[1] = ((argument >> 24) & 0xFF);
-    CommandFrame[2] = ((argument >> 16) & 0xFF);
-    CommandFrame[3] = ((argument >> 8) & 0xFF);
-    CommandFrame[4] = ((argument >> 0) & 0xFF);
-
-    /*******		   Command CRC + Stop bit 				******/
-    /* Crc is zero in most cases, otherwise hard-coded by Macro  */
-    CommandFrame[5] = crc | STOP_BIT;
+    /**** First Construct the Command Frame  ****/
+    uint8_t CommandFrame[COMMAND_FRAME_LEN] = {
+        /****	6-bit Command Index	+ (Start & Transmission bit)	****/
+        ((cmdID & 0x3F) | TRAN_BIT),
+        /****	Command argument	****/
+        ((argument >> 24) & 0xFF),
+        ((argument >> 16) & 0xFF),
+        ((argument >> 8) & 0xFF),
+        ((argument >> 0) & 0xFF),
+        /****	Command CRC + Stop bit	****/
+        /* Crc is zero in most cases, otherwise hard-coded by Macro  */
+        (crc | STOP_BIT),
+    };
 
     // Transmit the Command Frame
-    sendData(pSDHandle, CommandFrame, COMMAND_FRAME_LEN);
+    sendData(pSDHandle, CommandFrame, sizeof(CommandFrame));
 
     // Dummy Read
     receiveData(pSDHandle, &dummy_read, 1);
 
+    sd_response_t responseFormat = RESPONSE_R1;
+
     if (cmdID == CMD8)
     {
-        CmdResponse = getResponse(pSDHandle, RESPONSE_R7);
+        responseFormat = RESPONSE_R7;
     }
     else if (cmdID == CMD58)
     {
-        CmdResponse = getResponse(pSDHandle, RESPONSE_R3);
+        responseFormat = RESPONSE_R3;
     }
-    else
-    {
-        CmdResponse = getResponse(pSDHandle, RESPONSE_R1);
-    }
+
+    Command_Response_t CmdResponse = getResponse(pSDHandle, responseFormat);
 
     // CMD12 Requires a R1b busy state
     if (cmdID == CMD12)
