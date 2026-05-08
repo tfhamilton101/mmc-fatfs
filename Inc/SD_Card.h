@@ -12,9 +12,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "Utils.h"
-#include "stm32f407xx_gpio_driver.h"
-#include "stm32f407xx_spi_driver.h"
-#include "stm32f407xx_timer_driver.h"
+#include "stm32f4xx_gpio_driver.h"
+#include "stm32f4xx_spi_driver.h"
+#include "stm32f4xx_timer_driver.h"
 
 /************************************************************************* 
  *                         SD Handler Subtypes                           *
