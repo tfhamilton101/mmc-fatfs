@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "stm32f4xx_dma_driver.h"
-
+#include "stm32f4xx_nvic_driver.h"
 
 /************************************************************************************
  *                          SD Card Buffer Definitions
@@ -347,10 +347,10 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
     TIM_DIERConfig(pTIMx, TIM_DIER_UIE, ENABLE);
 
     // Configure TIM priority
-    TIM_IRQPriorityConfig(irqNo, NVIC_IRQ_PRI12);
+    NVIC_SetPriority(irqNo, NVIC_IRQ_PRI12);
 
     // Configure TIM IRQ
-    TIM_IRQInterruptConfig(irqNo, ENABLE);
+    NVIC_EnableIRQ(irqNo);
 }
 
 /****************************************************************************************
