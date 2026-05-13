@@ -147,6 +147,8 @@ static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
 /***************************************************
  * 				Static Functions    			   *
  ***************************************************/
+static void getSystemInfo(FAT_Handle_t* pFAT);
+
 // Remove the padded spaces from a file entry name & entension
 static void removeSpacePadding(uint8_t* text, uint8_t fieldSize);
 // Parse File name and extension
@@ -186,7 +188,7 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
  *
  * 	@note
  */
-void InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
+fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
 {
     // Link SD handler to FAT handler
     pFAT->pSDHandle = pSDHandle;
@@ -197,21 +199,23 @@ void InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
     if (status != SD_STATE_READY)
     {
         pFAT->FAT_Stat = INIT_FAT_FAIL;
-        return;
+        return pFAT->FAT_Stat;
     }
 
     // Read FAT system parameters from Boot sector
-    FAT_GetSystemInfo(pFAT);
+    getSystemInfo(pFAT);
 
     // Set Root directory as working directory
     if (FAT_getStat(pFAT) == INIT_FAT_FAIL)
     {
         FAT_SetWorkingAddr(pFAT, 0, 0);
     }
+
+    return pFAT->FAT_Stat;
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_GetSystemInfo
+ *	@fn 			     - getSystemInfo
  *
  * 	@brief			     - Get information for FAT
  *
@@ -221,7 +225,7 @@ void InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
  *
  * 	@note
  */
-void FAT_GetSystemInfo(FAT_Handle_t* pFAT)
+static void getSystemInfo(FAT_Handle_t* pFAT)
 {
     if (SD_IsReady(pFAT->pSDHandle) == false)
     {
@@ -2154,7 +2158,7 @@ uint32_t getFatAddrUnit(FAT_Handle_t* pFAT)
  *
  *  @note              - 
  */
-fat_init_states_t FAT_getStat(FAT_Handle_t* pFAT)
+fat_status_t FAT_getStat(FAT_Handle_t* pFAT)
 {
     return pFAT->FAT_Stat;
 }

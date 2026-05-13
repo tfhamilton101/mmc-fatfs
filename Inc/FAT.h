@@ -254,14 +254,14 @@ typedef enum
     INIT_FAT_FAIL,
     INIT_CMD_FAIL,
     INIT_FAT_SUCCESS,
-} fat_init_states_t;
+} fat_status_t;
 
 /**************************************************
  *           Handle structure for FAT             *
  **************************************************/
 typedef struct
 {
-    fat_init_states_t FAT_Stat;
+    fat_status_t FAT_Stat;
     SD_Handle_t* pSDHandle;
     System_info_t SystemInfo;
     WorkingAddr_t WorkingAddr;
@@ -316,8 +316,7 @@ typedef enum
  ************************************************************************************/
 
 /* FAT Initialization Functions */
-void InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
-void FAT_GetSystemInfo(FAT_Handle_t* pFAT);
+fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
 
 /* File Read / Write functions */
 fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, file_mode_t mode);
@@ -347,7 +346,7 @@ uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 fat_types_t getFatType(FAT_Handle_t* pFAT);
 uint32_t getFatAddrUnit(FAT_Handle_t* pFAT);
 
-fat_init_states_t FAT_getStat(FAT_Handle_t* pFAT);
+fat_status_t FAT_getStat(FAT_Handle_t* pFAT);
 // TODO: CompressNodesQueue
 
 /* IRQ Functions */
