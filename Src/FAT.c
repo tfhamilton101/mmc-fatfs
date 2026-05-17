@@ -1291,15 +1291,20 @@ void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
 /****************************************************************************************
  *	@fn 			     - FAT_fread
  *
- * 	@brief			     - Read Block(s) of data from a file
+ * 	@brief			     - Read block(s) of data from a file
  *
  *  @param[pFAT]         - Handler structure for FAT
  *  @param[file]         - Memory location the file details
+ *  @param[data]         - Output: Pointer set to SD buffer containing read data
+ *  @param[size]         - Output: Number of valid bytes in buffer (full buffer or final block remainder)
  *
- * 	@return			     - Read status
+ * 	@return			     - FREAD_DONE, FREAD_EOF_FOUND, FREAD_FAIL, or FREAD_NOP
  *
+ * 	@note			     - Buffer is automatically toggled. For DMA transfers, caller must 
+ *                           wait for completion before next read. Size accounts for final 
+ *                           block when EOF is reached.
  */
-fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file)
+fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size)
 {
     NodesQueue* pNodesQueue = &file->NodesQueue;
 
@@ -1308,7 +1313,9 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file)
     static uint32_t currBaseAddr = 0;
 
     // Exit if the NodesQueue is empty or the file argument is not the current file
-    if (isQueueEmpty(&pNodesQueue->Info) || (pFAT->CurrFile != file) || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (file->mode != FILE_MODE_READ))
+    if (isQueueEmpty(&pNodesQueue->Info) || (pFAT->CurrFile != file) 
+       || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) 
+       || (file->mode != FILE_MODE_READ))
     {
         return FREAD_NOP;
     }
@@ -1362,6 +1369,12 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file)
         sectorsRead = 0;
         currBaseAddr = 0;
 
+        // Set output parameters
+        uint32_t bufSize = SD_GetBuffSize(pFAT->pSDHandle);
+        *data = SD_GetBuffAddr(pFAT->pSDHandle);
+        *size = file->FileSize % bufSize;
+        SD_ToggleCurrBuff(pFAT->pSDHandle);
+
         return FREAD_EOF_FOUND;
     }
 
@@ -1400,6 +1413,11 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file)
         // Reset the current Sector number
         currSectorNum = 0;
     }
+
+    // Set output parameters
+    *data = SD_GetBuffAddr(pFAT->pSDHandle);
+    *size = SD_GetBuffSize(pFAT->pSDHandle);
+    SD_ToggleCurrBuff(pFAT->pSDHandle);
 
     return FREAD_DONE;
 }

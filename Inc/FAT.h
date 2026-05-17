@@ -320,7 +320,7 @@ fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
 
 /* File Read / Write functions */
 fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, file_mode_t mode);
-fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file);
+fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
 fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file);
 void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
 bool FAT_feof(file_entry_t* file);
