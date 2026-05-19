@@ -599,9 +599,6 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
     uint8_t dummy_read;
     uint8_t dummy_write[2] = {0xFF, 0xFF};
 
-    // Ensure the SPI Peripheral is in 8-bit mode
-    SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
-
     /* Dummy clock (force DO hi-z for multiple slave SPI) */
     sendData(pSDHandle, dummy_write, 2);
 
@@ -994,17 +991,11 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
             return SD_READ_WRITE_FAIL;
         }
 
-        // // Update SPI Peripheral to 16-bit for faster block read
-        // SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_16BITS);
-
         // Read the data block
         transferData(pSDHandle, rxBuffer, SD_DEFAULT_BLOCK_SIZE);
 
         // Receive the 16-bit checksum
         transferData(pSDHandle, CRC, 2);
-
-        // // Switch back to 8-bit Mode
-        // SPI_UpdateDFF(pSDHandle->SPIHandle.pSPIx, SPI_DFF_8BITS);
     }
 
     if (BlockCount > 1)
