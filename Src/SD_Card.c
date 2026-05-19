@@ -16,8 +16,19 @@
  *                          SD Card Buffer Definitions
  *************************************************************************************/
 
-// The SD RX buffer size must be a Powers of 2 multiple of the default block side
-#define SD_BUFFER_SIZE (32 * SD_DEFAULT_BLOCK_SIZE)
+// Supported Allocation Unit (cluster) sizes in bytes.
+// Note: Because this driver allocates a double buffer, most MCUs 
+// cannot support cluster sizes greater than 32KB due to RAM constraints.
+#define CLUSTER_SIZE_4KB (16 * SD_DEFAULT_BLOCK_SIZE)
+#define CLUSTER_SIZE_8KB (16 * SD_DEFAULT_BLOCK_SIZE)
+#define CLUSTER_SIZE_16KB (32 * SD_DEFAULT_BLOCK_SIZE)
+#define CLUSTER_SIZE_32KB (64 * SD_DEFAULT_BLOCK_SIZE)
+
+// The SD RX buffer size must be a power-of-two multiple of the default block size.
+// Note: Matching this to the card's allocation unit size maximizes Read/Write efficiency.
+// If SD_BUFFER_SIZE exceeds the card's cluster size, Read/Write operations are capped 
+// and executed at single-cluster increments.
+#define SD_BUFFER_SIZE CLUSTER_SIZE_16KB
 
 /*
  * DMA Threshold - Minimum transfer size for DMA efficiency

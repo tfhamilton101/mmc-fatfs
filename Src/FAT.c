@@ -1331,23 +1331,26 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
         sectorsRead = 0;
     }
 
-    uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector;
+    System_info_t* systemInfo = &pFAT->SystemInfo;
+    uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / systemInfo->BytesPerSector;
+
+    // Only read up to a cluster at a time, even if the buffer can hold more. 
+    uint32_t sectorsToRead = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
 
     uint32_t tempNode;
-    uint32_t addrUnit = getFatAddrUnit(pFAT);
-    sd_read_write_t cmdStatus = SD_READ_WRITE_FAIL;
-
+    
     if (currSectorNum == 0)
     {
         // Peak the next node from the Queue, it'd be dequeued when its finished.
         peekQueue(&pNodesQueue->Info, &tempNode);
-
+        
         // Update the current base address
         currBaseAddr = FAT_GetClusterAddr(pFAT, tempNode);
     }
-
+    
     // Read the current data block
-    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer);
+    uint32_t addrUnit = getFatAddrUnit(pFAT);
+    sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsToRead);
 
     // Read Error Handling
     if (cmdStatus == SD_READ_WRITE_FAIL)
@@ -1356,10 +1359,10 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
         return FREAD_FAIL;
     }
 
-    sectorsRead += sectorsPerBuffer;
+    sectorsRead += sectorsToRead;
 
     // Found the End of File
-    if ((sectorsRead * pFAT->SystemInfo.BytesPerSector) > file->FileSize)
+    if ((sectorsRead * systemInfo->BytesPerSector) > file->FileSize)
     {
         // Done processing the current cluster
         dequeue(&pNodesQueue->Info, &tempNode);
@@ -1379,9 +1382,9 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
     }
 
     // Determine how the current sector needs to be incremented
-    if (currSectorNum < pFAT->SystemInfo.SectorsPerCluster - sectorsPerBuffer)
+    if (currSectorNum < systemInfo->SectorsPerCluster - sectorsToRead)
     {
-        currSectorNum += sectorsPerBuffer;
+        currSectorNum += sectorsToRead;
     }
     else
     {
@@ -1416,7 +1419,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
 
     // Set output parameters
     *data = SD_GetBuffAddr(pFAT->pSDHandle);
-    *size = SD_GetBuffSize(pFAT->pSDHandle);
+    *size = sectorsToRead * systemInfo->BytesPerSector;
     SD_ToggleCurrBuff(pFAT->pSDHandle);
 
     return FREAD_DONE;
@@ -1448,7 +1451,12 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
 
     uint32_t tempNode;
     uint32_t addrUnit = getFatAddrUnit(pFAT);
-    uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector;
+    
+    System_info_t* systemInfo = &pFAT->SystemInfo;
+    uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / systemInfo->BytesPerSector;
+
+    // Only write up to a cluster at a time, even if the buffer can hold more. 
+    uint32_t sectorsToWrite = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
 
     // Reset the Static variables on the first write
     if (file->state == FILE_STATE_IDLE)
@@ -1457,16 +1465,15 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
         file->state = FILE_STATE_WRITE;
 
         /*** Determine where to start writing ***/
-        System_info_t* SystemInfo = &pFAT->SystemInfo;
-
+        
         // Calculate how many bytes are written to the final cluster
-        uint32_t bytesPerFinalCluster = file->FileSize % (SystemInfo->BytesPerSector * SystemInfo->SectorsPerCluster);
+        uint32_t bytesPerFinalCluster = file->FileSize % (systemInfo->BytesPerSector * systemInfo->SectorsPerCluster);
 
         // Peak the next node from the Queue, it'd be dequeued when its finished.
         peekQueue(&pNodesQueue->Info, &tempNode);
 
         // Calculate current sector number and base address
-        currSectorNum = bytesPerFinalCluster / SystemInfo->BytesPerSector;
+        currSectorNum = bytesPerFinalCluster / systemInfo->BytesPerSector;
         currBaseAddr = FAT_GetClusterAddr(pFAT, tempNode) + (currSectorNum * addrUnit);
     }
     else if (file->state == FILE_STATE_WRITE)
@@ -1486,7 +1493,7 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
     }
 
     // Read the current data block
-    if (SD_WriteBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer) == SD_READ_WRITE_FAIL)
+    if (SD_WriteBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite) == SD_READ_WRITE_FAIL)
     {
         // Report Issue
         return FWRITE_FAIL;
@@ -1505,9 +1512,9 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
     }
 
     // Determine how the current sector needs to be incremented
-    if (currSectorNum < pFAT->SystemInfo.SectorsPerCluster - sectorsPerBuffer)
+    if (currSectorNum < pFAT->SystemInfo.SectorsPerCluster - sectorsToWrite)
     {
-        currSectorNum += sectorsPerBuffer;
+        currSectorNum += sectorsToWrite;
     }
     else
     {
