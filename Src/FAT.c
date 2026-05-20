@@ -22,7 +22,7 @@
 
 
 /************************************************************************************
- *							 Directory Macros										*
+ *							 File Specific Macros    								*
  ************************************************************************************/
 
 #define DIR_BYTES_PER_ENTRY 32
@@ -42,9 +42,20 @@ typedef enum
     LFN_CHECKSUM = 0x0D,
 } FAT_file_entry_offset_t;
 
-/************************************************************************************
- *                          Typedefs                                                *
- ************************************************************************************/
+/*
+ * Special values for first byte of the filename
+ */
+typedef enum
+{
+    // End of a directory
+    END_OF_DIRECTORY = 0x00,
+    // Filename has been used, now deleted
+    FILENAME_DELETED = 0xe5,
+    // First character of the filename is actually 0xe5 (Japan)
+    FILENAME_E5h = 0x05,
+    // First two entries of a subdirectory
+    FILENAME_PARENT = 0x2E
+} FAT_entry_type_t;
 
 
 /**************************************************

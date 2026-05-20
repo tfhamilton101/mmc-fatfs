@@ -38,20 +38,6 @@ typedef enum
     FILE_SIZE_SIZE = 4
 } FAT_file_entry_size_t;
 
-/*
- * Special values for first byte of the filename
- */
-typedef enum
-{
-    // End of a directory
-    END_OF_DIRECTORY = 0x00,
-    // Filename has been used, now deleted
-    FILENAME_DELETED = 0xe5,
-    // First character of the filename is actually 0xe5 (Japan)
-    FILENAME_E5h = 0x05,
-    // First two entries of a subdirectory
-    FILENAME_PARENT = 0x2E
-} FAT_entry_type_t;
 
 /*
  *  Flags held in the file attribute byte
