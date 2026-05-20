@@ -169,6 +169,37 @@ typedef enum
 } fat_fload_t;
 
 
+/**********************************
+ *  Macros to get Time and Date   *
+ **********************************/
+
+// Bit field Structure for time conversion
+typedef struct
+{
+    uint16_t Seconds : 5;
+    uint16_t Minutes : 6;
+    uint16_t Hours : 5;
+} Time_format_t, *pTimeformat;
+
+// Bit field Structure for date conversion
+typedef struct
+{
+    uint16_t Day : 5;
+    uint16_t Month : 4;
+    uint16_t Year : 7;
+} Date_format_t, *pDateFormat;
+
+#define START_YEAR 1980
+
+// Time Conversion Macros
+#define GetFileHours(x) (((pTimeformat)&x)->Hours)
+#define GetFileMinutes(x) (((pTimeformat)&x)->Minutes)
+#define GetFileSeconds(x) (((pTimeformat)&x)->Seconds)
+// Date Conversion Macros
+#define GetFileYear(x) (((pDateFormat)&x)->Year + START_YEAR)
+#define GetFileMonth(x) (((pDateFormat)&x)->Month)
+#define GetFileDay(x) (((pDateFormat)&x)->Day)
+
 /***************************************************
  * 				Global Variables    			   *
  ***************************************************/
