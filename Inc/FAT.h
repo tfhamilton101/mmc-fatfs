@@ -39,21 +39,6 @@ typedef enum
 } FAT_file_entry_size_t;
 
 
-/*
- *  Flags held in the file attribute byte
- *  Note: bits 6 & 7 are reserved
- */
-typedef enum
-{
-    FILE_FLAG_READ_ONLY = BIT0,
-    FILE_FLAG_HIDDEN = BIT1,
-    FILE_FLAG_SYSTEM = BIT2,
-    FILE_FLAG_VOLUME = BIT3,
-    FILE_FLAG_DIRECTORY = BIT4,
-    FILE_FLAG_ARCHIVED = BIT5,
-    FILE_FLAG_LFN = 0x0F
-} FAT_file_flags_t;
-
 typedef struct
 {
     QueueInfo Info;
@@ -233,7 +218,6 @@ typedef enum
     FWRITE_DONE,
 } fat_fwrite_t;
 
-
 /************************************************************************************
  *			        		APIs supported by this driver							*
  * 		   For more information about the APIs check the function definitions		*
@@ -262,8 +246,8 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file);
 Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
 
 /* FAT File Attribute Functions */
-bool FAT_FileFlagStatus(file_entry_t* file, FAT_file_flags_t flag);
-bool FAT_isHiddenFile(file_entry_t* file);
+bool FAT_IsHiddenFile(file_entry_t* file);
+bool FAT_IsDirectory(file_entry_t* file);
 
 /* Other Functions */
 uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);

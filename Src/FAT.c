@@ -59,6 +59,20 @@ typedef enum
     FILENAME_PARENT = 0x2E
 } FAT_entry_type_t;
 
+/*
+ *  Flags held in the file attribute byte
+ *  Note: bits 6 & 7 are reserved
+ */
+typedef enum
+{
+    FILE_FLAG_READ_ONLY = BIT0,
+    FILE_FLAG_HIDDEN = BIT1,
+    FILE_FLAG_SYSTEM = BIT2,
+    FILE_FLAG_VOLUME = BIT3,
+    FILE_FLAG_DIRECTORY = BIT4,
+    FILE_FLAG_ARCHIVED = BIT5,
+    FILE_FLAG_LFN = 0x0F
+} FAT_file_flags_t;
 
 /**************************************************
  *           Traverse FAT Table Define            *
@@ -245,6 +259,7 @@ static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT);
 
 static bool isEndOfDir(file_entry_t* file);
 static bool isLongFile(file_entry_t* file);
+static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 
 // Create new file
 static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
@@ -725,7 +740,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
             entryCount++;
 
             // If the file is real print the details
-            if (!FAT_isHiddenFile(file))
+            if (!FAT_IsHiddenFile(file))
             {
                 // Compare the file names
                 if (strcmp((char*)file->Filename, (char*)Filename) == 0 && strcmp((char*)file->FileExt, (char*)FileExt) == 0)
@@ -735,7 +750,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
                 }
 
                 // If we have found a new directory, add it to the queue
-                if (FAT_FileFlagStatus(file, FILE_FLAG_DIRECTORY) && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
+                if (hasFileFlag(file, FILE_FLAG_DIRECTORY) && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
                 {
                     tempAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
                     enqueue(&addrQueue, &tempAddr);
@@ -770,7 +785,7 @@ Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t*
     // Search for file
     Search_Status_t searchStatus = findFile(pFAT, fileName, file, mode);
 
-    if (searchStatus == FILESEARCH_FOUND && FAT_FileFlagStatus(file, FILE_FLAG_DIRECTORY))
+    if (searchStatus == FILESEARCH_FOUND && hasFileFlag(file, FILE_FLAG_DIRECTORY))
     {
         return FILESEARCH_FOUND;
     }
@@ -1685,7 +1700,7 @@ uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID)
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_FileFlagStatus
+ *	@fn 			     - hasFileFlag
  *
  * 	@brief			     - Get status flags from the file attribute byte
  *
@@ -1695,13 +1710,9 @@ uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID)
  * 	@return			     - True or False
  *
  */
-bool FAT_FileFlagStatus(file_entry_t* file, FAT_file_flags_t flag)
+static bool hasFileFlag(file_entry_t *file, FAT_file_flags_t flag)
 {
-    if (file->FileAttribute & flag)
-    {
-        return true;
-    }
-    return false;
+    return file->FileAttribute & flag;
 }
 
 /****************************************************************************************
@@ -1714,9 +1725,24 @@ bool FAT_FileFlagStatus(file_entry_t* file, FAT_file_flags_t flag)
  * 	@return			     - True or False
  *
  */
-bool FAT_isHiddenFile(file_entry_t* file)
+bool FAT_IsHiddenFile(file_entry_t* file)
 {
-    return FAT_FileFlagStatus(file, FILE_FLAG_VOLUME | FILE_FLAG_SYSTEM | FILE_FLAG_HIDDEN);
+    return hasFileFlag(file, FILE_FLAG_VOLUME | FILE_FLAG_SYSTEM | FILE_FLAG_HIDDEN);
+}
+
+/****************************************************************************************
+ *	@fn 			     - FAT_IsDirectory
+ *
+ * 	@brief			     - Determine whether file is a directory
+ *
+ * 	@param[file]	     - Memory location of file structure
+ *
+ * 	@return			     - True or False
+ *
+ */
+bool FAT_IsDirectory(file_entry_t *file)
+{
+    return hasFileFlag(file, FILE_FLAG_DIRECTORY);
 }
 
 /****************************************************************************************
