@@ -13,34 +13,16 @@
 #include "SD_Card.h"
 #include "Queue.h"
 
-/************************************************************************************
- *							 Directory Macros										*
- ************************************************************************************/
-#define DIR_BYTES_PER_ENTRY 32
 
-typedef enum
-{
-    FILENAME = 0,
-    FILE_EXTENSION = 0x08,
-    FILE_ATTRIBUTE = 0x0B,
-    FILE_START_CLUSTER_HI = 0x14,
-    FILE_TIME_MODIFIED = 0x16,
-    FILE_DATE_MODIFIED = 0x18,
-    FILE_START_CLUSTER_LO = 0x1A,
-    FILE_SIZE = 0x1C,
-    // Long Filename offsets
-    LFN_ORDINAL = 0x00,
-    LFN_CHECKSUM = 0x0D,
-} FAT_file_entry_offset_t;
+/**********************************
+ *    Directory File Macros 	  *
+ **********************************/
 
 // Maximum number of entries supported by VFAT. (255 bytes / 13 bytes per entry)
 #define VFAT_MAX_ENTRIES 20
 // Maximum number of entries this driver supports. (Max LFN is 52 characters)
 #define MAX_LFN_ENTRIES 4
 
-/**********************************
- *    Directory File Macros 	  *
- **********************************/
 typedef enum
 {
     FILENAME_SIZE = 8,

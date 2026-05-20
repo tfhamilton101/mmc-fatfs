@@ -20,6 +20,28 @@
 #include "Hexdump.h"
 #endif
 
+
+/************************************************************************************
+ *							 Directory Macros										*
+ ************************************************************************************/
+
+#define DIR_BYTES_PER_ENTRY 32
+
+typedef enum
+{
+    FILENAME = 0,
+    FILE_EXTENSION = 0x08,
+    FILE_ATTRIBUTE = 0x0B,
+    FILE_START_CLUSTER_HI = 0x14,
+    FILE_TIME_MODIFIED = 0x16,
+    FILE_DATE_MODIFIED = 0x18,
+    FILE_START_CLUSTER_LO = 0x1A,
+    FILE_SIZE = 0x1C,
+    // Long Filename offsets
+    LFN_ORDINAL = 0x00,
+    LFN_CHECKSUM = 0x0D,
+} FAT_file_entry_offset_t;
+
 /************************************************************************************
  *                          Typedefs                                                *
  ************************************************************************************/
