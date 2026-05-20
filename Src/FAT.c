@@ -26,6 +26,8 @@
  ************************************************************************************/
 
 #define DIR_BYTES_PER_ENTRY 32
+#define MAX_DIRECTORIES 32
+#define MAX_ENTIRES_PER_DIRECTORY 256
 
 typedef enum
 {
@@ -199,6 +201,16 @@ typedef struct
 #define GetFileYear(x) (((pDateFormat)&x)->Year + START_YEAR)
 #define GetFileMonth(x) (((pDateFormat)&x)->Month)
 #define GetFileDay(x) (((pDateFormat)&x)->Day)
+
+
+/**** Macros for Master Boot Record ****/
+typedef enum
+{
+    MBR_TYPE_CODE = 0x01C2,
+    MBR_LBA = 0x01C6,
+    MBR_END_MARKER = 0x01FE,
+} mbr_offsets_t;
+
 
 /***************************************************
  * 				Global Variables    			   *

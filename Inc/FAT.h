@@ -96,7 +96,6 @@ typedef struct
     NodesQueue NodesQueue;
 } file_entry_t;
 
-
 /**********************************
  *      File search macros		  *
  **********************************/
@@ -118,9 +117,6 @@ typedef enum
     SEARCH_DIR_LOCAL,
     SEARCH_DIR_RECURSIVE,
 } Search_Mode_t;
-
-#define MAX_DIRECTORIES 32
-#define MAX_ENTIRES_PER_DIRECTORY 256
 
 /*
  *  Structure for System information
@@ -205,16 +201,6 @@ typedef struct
     WorkingAddr_t WorkingAddr;
     file_entry_t* CurrFile;
 } FAT_Handle_t;
-
-/**** Macros for Master Boot Record ****/
-typedef enum
-{
-    MBR_TYPE_CODE = 0x01C2,
-    MBR_LBA = 0x01C6,
-    MBR_END_MARKER = 0x01FE,
-} mbr_offsets_t;
-
-
 
 /**************************************************
  *           FAT File I/O Return Types            *
