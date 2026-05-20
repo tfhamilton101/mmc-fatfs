@@ -1337,6 +1337,11 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
     // Only read up to a cluster at a time, even if the buffer can hold more. 
     uint32_t sectorsToRead = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
 
+    // Calculate the number of sectors remaining in the file and adjust to not read past the end of the file
+    uint32_t totalFileSectors = (file->FileSize + (systemInfo->BytesPerSector - 1)) / systemInfo->BytesPerSector;
+    uint32_t sectorsRemaining = totalFileSectors - sectorsRead;
+    sectorsToRead = (sectorsRemaining < sectorsToRead) ? sectorsRemaining : sectorsToRead;
+
     uint32_t tempNode;
     
     if (currSectorNum == 0)
@@ -1362,7 +1367,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
     sectorsRead += sectorsToRead;
 
     // Found the End of File
-    if ((sectorsRead * systemInfo->BytesPerSector) > file->FileSize)
+    if ((sectorsRead * systemInfo->BytesPerSector) >= file->FileSize)
     {
         // Done processing the current cluster
         dequeue(&pNodesQueue->Info, &tempNode);
