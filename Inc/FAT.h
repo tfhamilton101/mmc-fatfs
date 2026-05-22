@@ -73,12 +73,15 @@ typedef struct
     uint16_t DateModified;
     uint32_t StartingCluster;
     uint32_t EndingCluster;
+    uint32_t ParentCluster;
     uint32_t DirEntryBaseAddr;
     uint32_t DirEntryOffset;
     uint32_t FileSize;
     file_mode_t mode;
     file_state_t state;
     NodesQueue NodesQueue;
+    uint32_t scanBaseAddr;
+    uint32_t scanOffset;
 } file_entry_t;
 
 /**********************************
@@ -235,14 +238,8 @@ bool FAT_feof(file_entry_t* file);
 
 fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
 
-/* FAT Directory Functions */
-void FAT_SetWorkingDir(FAT_Handle_t* pFAT, uint32_t Dir);
-void FAT_SetWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offset);
-uint32_t FAT_GetWorkingDir(FAT_Handle_t* pFAT);
-void FAT_GoToRootDir(FAT_Handle_t* pFAT);
-
 /* FAT Directory / File Searching Functions */
-bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file);
+bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
 
 /* FAT File Attribute Functions */
 bool FAT_IsHiddenFile(file_entry_t* file);
