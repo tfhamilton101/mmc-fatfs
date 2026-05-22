@@ -243,7 +243,6 @@ void FAT_GoToRootDir(FAT_Handle_t* pFAT);
 
 /* FAT Directory / File Searching Functions */
 bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* file);
-Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
 
 /* FAT File Attribute Functions */
 bool FAT_IsHiddenFile(file_entry_t* file);

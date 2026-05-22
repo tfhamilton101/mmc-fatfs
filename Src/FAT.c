@@ -264,8 +264,11 @@ static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 // Create new file
 static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
+static Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
 static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
+
+
 
 /****************************************************************************************
  *	@fn 			     - InitFAT
@@ -717,14 +720,6 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
             return FILESEARCH_FAIL;
         }
 
-        /* The first two entries of a non-root directory
-		 * are for the current & parent directory  */
-        if (workingDir != pFAT->SystemInfo.RootDirAddress && mode < SEARCH_DIR_LOCAL)
-        {
-            // Skip these entries for speed
-            offset += DIR_BYTES_PER_ENTRY * 2;
-        }
-
         // If we are in the root directory there is a limit to the number of entries
         if (getFatType(pFAT) == FAT_TYPE_FAT16)
         {
@@ -739,22 +734,18 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
             // Increment the entry count
             entryCount++;
 
-            // If the file is real print the details
-            if (!FAT_IsHiddenFile(file))
+            // Match the file names
+            if (strcmp((char*)file->Filename, (char*)Filename) == 0 && strcmp((char*)file->FileExt, (char*)FileExt) == 0)
             {
-                // Compare the file names
-                if (strcmp((char*)file->Filename, (char*)Filename) == 0 && strcmp((char*)file->FileExt, (char*)FileExt) == 0)
-                {
-                    // Found the file, so exit the function
-                    return FILESEARCH_FOUND;
-                }
+                // Found the file, so exit the function
+                return FILESEARCH_FOUND;
+            }
 
-                // If we have found a new directory, add it to the queue
-                if (hasFileFlag(file, FILE_FLAG_DIRECTORY) && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
-                {
-                    tempAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
-                    enqueue(&addrQueue, &tempAddr);
-                }
+            // If we have found a new directory, add it to the queue
+            if (hasFileFlag(file, FILE_FLAG_DIRECTORY) && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
+            {
+                tempAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
+                enqueue(&addrQueue, &tempAddr);
             }
         }
 
@@ -768,7 +759,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_FindDir
+ *	@fn 			     - findDirectory
  *
  * 	@brief			     - Parse a file information from a directory
  *
@@ -780,7 +771,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
  * 	@return			     - Search status
  *
  */
-Search_Status_t FAT_FindDir(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
+Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
 {
     // Search for file
     Search_Status_t searchStatus = findFile(pFAT, fileName, file, mode);
@@ -842,7 +833,7 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_en
                 tempBuf[n - delimeterLoc] = '\0';
 
                 // Search for the file or directory
-                if (FAT_FindDir(pFAT, tempBuf, file, SEARCH_DIR_LOCAL) == FILESEARCH_FOUND)
+                if (findDirectory(pFAT, tempBuf, file, SEARCH_DIR_LOCAL) == FILESEARCH_FOUND)
                 {
                     // Change Working Directory to found sub-directory
                     FAT_SetWorkingDir(pFAT, FAT_GetClusterAddr(pFAT, file->StartingCluster));
