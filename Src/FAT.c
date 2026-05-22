@@ -272,7 +272,7 @@ static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
 static Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
-static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
+static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
 static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 
 
@@ -817,39 +817,57 @@ Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_
  * 	@return	             - Search status
  *
  */
-static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
+static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file)
 {
     uint8_t n, delimeterLoc;
-    uint8_t tempBuf[FILENAME_MAX_SIZE + 1];
+    uint8_t pathSegment[FILENAME_MAX_SIZE + 1];
+    uint8_t fileNameBuf[FILENAME_MAX_SIZE + 1];
     uint32_t currDir = getWorkingDir(pFAT);
-    uint8_t nameLen = strlen((char*)fileName);
+    
+    // Create mutable copy of fileName to handle string constants
+    strncpy((char*)fileNameBuf, (char*)path, FILENAME_MAX_SIZE);
+    fileNameBuf[FILENAME_MAX_SIZE] = '\0';
+    
+    uint8_t* workingName = fileNameBuf;
+    uint8_t nameLen = strlen((char*)workingName);
 
     // If the name ends with a forward-slash remove it
-    if (fileName[nameLen - 1] == '/')
+    if (workingName[nameLen - 1] == '/')
     {
-        fileName[nameLen - 1] = '\0';
+        workingName[nameLen - 1] = '\0';
+        nameLen--;
     }
 
-    if (strncmp((char*)fileName, "~/", 2) == 0)
+    if (strncmp((char*)workingName, "~", 1) == 0)
     {
-        fileName += 2;
-        nameLen -= 2;
-        goToRootDir(pFAT);
+        // If the name is just "~/" we are looking for the volume lable
+        if(strlen((char*)workingName) == 1)
+        {
+            goToRootDir(pFAT);
+            strcpy((char*)workingName, (char*)pFAT->SystemInfo.VolumeLabel);
+            nameLen = strlen((char*)workingName);
+        }
+        else
+        {
+            workingName += 2;
+            nameLen -= 2;
+            goToRootDir(pFAT);
+        }
     }
 
     // Loop through the input and search for sub directories
     for (n = 0, delimeterLoc = 0; n < nameLen; n++)
     {
         // Look for the delimiter
-        if (fileName[n] == '/')
+        if (workingName[n] == '/')
         {
             if (delimeterLoc != n)
             {
-                strncpy((char*)tempBuf, (char*)&fileName[delimeterLoc], n - delimeterLoc);
-                tempBuf[n - delimeterLoc] = '\0';
+                strncpy((char*)pathSegment, (char*)&workingName[delimeterLoc], n - delimeterLoc);
+                pathSegment[n - delimeterLoc] = '\0';
 
                 // Search for the file or directory
-                if (findDirectory(pFAT, tempBuf, file, SEARCH_DIR_LOCAL) == FILESEARCH_FOUND)
+                if (findDirectory(pFAT, pathSegment, file, SEARCH_DIR_LOCAL) == FILESEARCH_FOUND)
                 {
                     // Change Working Directory to found sub-directory
                     setWorkingDir(pFAT, FAT_GetClusterAddr(pFAT, file->StartingCluster));
@@ -871,11 +889,11 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* fileName, file_en
     // Ex: Recipes/Baked Beans.txt
     if (delimeterLoc != n)
     {
-        strncpy((char*)tempBuf, (char*)&fileName[delimeterLoc], n - delimeterLoc);
-        tempBuf[n - delimeterLoc] = '\0';
+        strncpy((char*)pathSegment, (char*)&workingName[delimeterLoc], n - delimeterLoc);
+        pathSegment[n - delimeterLoc] = '\0';
 
         // Search for the file
-        if (findFile(pFAT, tempBuf, file, SEARCH_FILE_LOCAL) != FILESEARCH_FOUND)
+        if (findFile(pFAT, pathSegment, file, SEARCH_FILE_LOCAL) != FILESEARCH_FOUND)
         {
             // Fail, go back to original directory
             setWorkingDir(pFAT, currDir);
