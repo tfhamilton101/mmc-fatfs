@@ -901,8 +901,10 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
         }
     }
 
+    uint32_t workingDir = FAT_GetClusterAddr(pFAT, file->StartingCluster);
+
     // Go back to original directory
-    setWorkingDir(pFAT, currDir);
+    setWorkingDir(pFAT, workingDir);
     return FILESEARCH_FOUND;
 }
 
