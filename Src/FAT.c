@@ -257,8 +257,6 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
 static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT);
 static void setWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offset);
-static void setWorkingDir(FAT_Handle_t* pFAT, uint32_t Dir);
-static uint32_t getWorkingDir(FAT_Handle_t* pFAT);
 /* FAT Directory Functions */
 static void goToRootDir(FAT_Handle_t* pFAT);
 
@@ -270,8 +268,8 @@ static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 
 // Create new file
 static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
-static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
-static Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode);
+static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
+static Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
 static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
 static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 
@@ -465,8 +463,8 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     WorkingAddr_t currAddr;
     
     // Initialize scan position from directory state
-    currAddr.baseAddr = dir->scanBaseAddr;
-    currAddr.offset = dir->scanOffset;
+    currAddr.baseAddr = dir->iterBaseAddr;
+    currAddr.offset = dir->iterOffset;
     
     sd_read_write_t cmdStatus = SD_READ_WRITE_FAIL;
 
@@ -669,8 +667,8 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     currAddr.offset += DIR_BYTES_PER_ENTRY;
 
     // Update the directory scan state
-    dir->scanBaseAddr = currAddr.baseAddr;
-    dir->scanOffset = currAddr.offset;
+    dir->iterBaseAddr = currAddr.baseAddr;
+    dir->iterOffset = currAddr.offset;
 
     return !isEndOfDir(entry);
 }
@@ -688,7 +686,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
  * 	@return			     - Search status
  *
  */
-static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
+static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr)
 {
     uint32_t addrQueueBuf[MAX_DIRECTORIES];
     uint16_t entriesPerDir = MAX_ENTIRES_PER_DIRECTORY;
@@ -699,11 +697,8 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
     // Initialize a queue for the directory search
     QueueInfo addrQueue = initQueue(addrQueueBuf, MAX_DIRECTORIES, sizeof(uint32_t));
 
-    // Set the Working address with the value on the top of the stack
-    setWorkingAddr(pFAT, getWorkingDir(pFAT), 0);
-
     // Enqueue the starting address
-    enqueue(&addrQueue, &pFAT->WorkingAddr.baseAddr);
+    enqueue(&addrQueue, &startAddr);
 
     // temporary file to hold just the name and extension
     uint8_t Filename[FILENAME_MAX_SIZE + 1] = {0};
@@ -741,8 +736,8 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
         }
 
         // Initialize temporary directory entry for scanning
-        tempDir.scanBaseAddr = workingDir;
-        tempDir.scanOffset = 0;
+        tempDir.iterBaseAddr = workingDir;
+        tempDir.iterOffset = 0;
 
         // Scan Until we find the end of the directory
         while ((entryCount < entriesPerDir) && FAT_ScanDir(pFAT, &tempDir, file))
@@ -787,10 +782,10 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
  * 	@return			     - Search status
  *
  */
-Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode)
+Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr)
 {
     // Search for file
-    Search_Status_t searchStatus = findFile(pFAT, fileName, file, mode);
+    Search_Status_t searchStatus = findFile(pFAT, fileName, file, mode, startAddr);
 
     if (searchStatus == FILESEARCH_FOUND && hasFileFlag(file, FILE_FLAG_DIRECTORY))
     {
@@ -822,23 +817,22 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
     uint8_t n, delimeterLoc;
     uint8_t pathSegment[FILENAME_MAX_SIZE + 1];
     uint8_t pathBuf[FILENAME_MAX_SIZE + 1];
-    uint32_t currDir = getWorkingDir(pFAT);
-    
-    // Create mutable copy of fileName to handle string constants
+
+    // Create mutable copy of path to handle string constants
     strncpy((char*)pathBuf, (char*)path, FILENAME_MAX_SIZE);
     pathBuf[FILENAME_MAX_SIZE] = '\0';
-    
+
     uint8_t* workingPath = pathBuf;
     uint8_t nameLen = strlen((char*)workingPath);
 
+    // All paths are absolute: start from root directory
+    uint32_t currSearchDir = pFAT->SystemInfo.RootDirAddress;
 
     if (strncmp((char*)workingPath, "/", 1) == 0)
     {
-        goToRootDir(pFAT);
-        
-        if(strlen((char*)workingPath) == 1)
+        if (strlen((char*)workingPath) == 1)
         {
-            // If the name is just "~/" we are looking for the volume lable
+            // If the path is just "/" we are looking for the volume label
             strcpy((char*)workingPath, (char*)pFAT->SystemInfo.VolumeLabel);
             nameLen = strlen((char*)workingPath);
         }
@@ -860,16 +854,14 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
                 strncpy((char*)pathSegment, (char*)&workingPath[delimeterLoc], n - delimeterLoc);
                 pathSegment[n - delimeterLoc] = '\0';
 
-                // Search for the file or directory
-                if (findDirectory(pFAT, pathSegment, file, SEARCH_DIR_LOCAL) == FILESEARCH_FOUND)
+                // Search for the directory segment starting from currSearchDir
+                if (findDirectory(pFAT, pathSegment, file, SEARCH_DIR_LOCAL, currSearchDir) == FILESEARCH_FOUND)
                 {
-                    // Change Working Directory to found sub-directory
-                    setWorkingDir(pFAT, FAT_GetClusterAddr(pFAT, file->StartingCluster));
+                    // Descend into the found sub-directory
+                    currSearchDir = FAT_GetClusterAddr(pFAT, file->StartingCluster);
                 }
                 else
                 {
-                    // Fail, go back to original directory
-                    setWorkingDir(pFAT, currDir);
                     return FILESEARCH_DIR_NOT_FOUND;
                 }
             }
@@ -886,19 +878,13 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
         strncpy((char*)pathSegment, (char*)&workingPath[delimeterLoc], n - delimeterLoc);
         pathSegment[n - delimeterLoc] = '\0';
 
-        // Search for the file
-        if (findFile(pFAT, pathSegment, file, SEARCH_FILE_LOCAL) != FILESEARCH_FOUND)
+        // Search for the file starting from currSearchDir
+        if (findFile(pFAT, pathSegment, file, SEARCH_FILE_LOCAL, currSearchDir) != FILESEARCH_FOUND)
         {
-            // Fail, go back to original directory
-            setWorkingDir(pFAT, currDir);
             return FILESEARCH_NOT_FOUND;
         }
     }
 
-    uint32_t workingDir = FAT_GetClusterAddr(pFAT, file->StartingCluster);
-
-    // Go back to original directory
-    setWorkingDir(pFAT, workingDir);
     return FILESEARCH_FOUND;
 }
 
@@ -1264,11 +1250,11 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file
     // Initialize directory scan state if this is a directory
     if (FAT_IsDirectory(file) || hasFileFlag(file, FILE_FLAG_VOLUME))
     {
-        file->scanBaseAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
-        file->scanOffset = 0;
+        file->iterBaseAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
+        file->iterOffset = 0;
 
         uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
-        SD_ReadBlock(pFAT->pSDHandle, file->scanBaseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
+        SD_ReadBlock(pFAT->pSDHandle, file->iterBaseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
 
         // We don't need to load up the NodesQueue for a directory
         return FOPEN_SUCCESS;
@@ -1843,39 +1829,6 @@ static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT)
 }
 
 /****************************************************************************************
- *	@fn 			     - setWorkingDir
- *
- * 	@brief			     - Set the FAT working directory
- *
- * 	@param[pFAT]	 	 - Handler structure for FAT
- * 	@param[WorkingAddr]	 - Handler structure for FAT
- *
- * 	@return			     - none
- *
- * 	@note
- */
-static void setWorkingDir(FAT_Handle_t* pFAT, uint32_t WorkingDir)
-{
-    pFAT->WorkingAddr.workingDir = WorkingDir;
-}
-
-/****************************************************************************************
- *	@fn 			     - getWorkingDir
- *
- * 	@brief			     - Get the FAT working directory
- *
- * 	@param[pFAT]	 	 - Handler structure for FAT
- *
- * 	@return			     - Top of the directory stack
- *
- * 	@note
- */
-static uint32_t getWorkingDir(FAT_Handle_t* pFAT)
-{
-    return pFAT->WorkingAddr.workingDir;
-}
-
-/****************************************************************************************
  *	@fn 			     - goToRootDir
  *
  * 	@brief			     - Set the FAT working directory
@@ -1888,8 +1841,6 @@ static uint32_t getWorkingDir(FAT_Handle_t* pFAT)
  */
 static void goToRootDir(FAT_Handle_t* pFAT)
 {
-    // Set the Working Directory
-    setWorkingDir(pFAT, pFAT->SystemInfo.RootDirAddress);
     // Set the Working Directory to the root dir
     setWorkingAddr(pFAT, pFAT->SystemInfo.RootDirAddress, 0);
 }

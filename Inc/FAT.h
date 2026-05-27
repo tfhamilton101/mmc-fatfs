@@ -80,8 +80,8 @@ typedef struct
     file_mode_t mode;
     file_state_t state;
     NodesQueue NodesQueue;
-    uint32_t scanBaseAddr;
-    uint32_t scanOffset;
+    uint32_t iterBaseAddr;
+    uint32_t iterOffset;
 } file_entry_t;
 
 /**********************************
@@ -158,7 +158,6 @@ typedef struct
  */
 typedef struct
 {
-    uint32_t workingDir;
     uint32_t baseAddr;
     uint32_t offset;
 } WorkingAddr_t;
@@ -230,7 +229,8 @@ typedef enum
 fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
 
 /* File Read / Write functions */
-fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, file_mode_t mode);
+fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
+fat_open_t FAT_fopenDir(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
 fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
 fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file);
 void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
