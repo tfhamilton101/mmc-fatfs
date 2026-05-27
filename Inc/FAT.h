@@ -153,15 +153,6 @@ typedef struct
     uint8_t dirLabel[VOLUME_LABEL_SIZE];
 } FAT_Directory_t;
 
-/*
- *  Structure to keep track of working Address
- */
-typedef struct
-{
-    uint32_t baseAddr;
-    uint32_t offset;
-} WorkingAddr_t;
-
 /************************************************************************************
  *							FAT States												*
  ************************************************************************************/
@@ -185,7 +176,6 @@ typedef struct
     fat_status_t FAT_Stat;
     SD_Handle_t* pSDHandle;
     System_info_t SystemInfo;
-    WorkingAddr_t WorkingAddr;
     file_entry_t* CurrFile;
 } FAT_Handle_t;
 

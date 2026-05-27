@@ -225,6 +225,14 @@ typedef enum
     MBR_END_MARKER = 0x01FE,
 } mbr_offsets_t;
 
+/*
+ *  Structure to keep track of working Address
+ */
+typedef struct
+{
+    uint32_t baseAddr;
+    uint32_t offset;
+} WorkingAddr_t;
 
 /***************************************************
  * 				Global Variables    			   *
@@ -251,12 +259,10 @@ static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueu
 static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
-static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t offset);
+static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
 static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
-static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT);
-static void setWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offset);
 /* FAT Directory Functions */
 
 static bool isEndOfDir(file_entry_t* file);
@@ -300,12 +306,6 @@ fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
 
     // Read FAT system parameters from Boot sector
     getSystemInfo(pFAT);
-
-    // Set Root directory as working directory
-    if (FAT_getStat(pFAT) == INIT_FAT_FAIL)
-    {
-        setWorkingAddr(pFAT, 0, 0);
-    }
 
     return pFAT->FAT_Stat;
 }
@@ -1291,10 +1291,6 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
 
     uint32_t currClusterID;
 
-    // For now, we will set the working directory to the root directory.
-    // getNextClusterID() will calculate which block needs to be read to get the next queue node
-    setWorkingAddr(pFAT, pFAT->SystemInfo.RootDirAddress, 0);
-
     // The file has just been opened, determine the starting ClusterID
     if (pNodesQueue->Tail == NODES_QUEUE_TAIL_INIT)
     {
@@ -1325,7 +1321,8 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
     else
     {
         // Starting mid-file
-        currClusterID = getNextClusterID(pFAT, pNodesQueue->Tail);
+        uint32_t loadedBaseAddr = 0;
+        currClusterID = getNextClusterID(pFAT, pNodesQueue->Tail, &loadedBaseAddr);
 
         // Block Read Failure
         if (currClusterID == 0)
@@ -1798,30 +1795,6 @@ static bool isLongFile(file_entry_t* file)
  *
  * 	@return			     - none
  *
- * 	@note
- */
-static void setWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offset)
-{
-    pFAT->WorkingAddr.baseAddr = WorkingAddr;
-    pFAT->WorkingAddr.offset = offset;
-}
-
-/****************************************************************************************
- *	@fn 			     - FAT_GetWorkingAddress
- *
- * 	@brief			     - Get the FAT working address
- *
- * 	@param[pFAT]	 	 - Handler structure for FAT
- *
- * 	@return			     - Current working address structure
- *
- * 	@note
- */
-static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT)
-{
-    return pFAT->WorkingAddr;
-}
-
 /*************************************************************************************************
  *                                      Static Functions                                        *
  *************************************************************************************************/
@@ -2002,25 +1975,25 @@ static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t clusterID)
  *
  * 	@note
  */
-static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
+static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr)
 {
     WorkingAddr_t clusterLoc = getTableBlockAddr(pFAT, clusterID);
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
-    // Check if we need to update our working address
-    if (getWorkingAddr(pFAT).baseAddr != clusterLoc.baseAddr)
+    // Only read a new block when the cluster entry is in a different sector
+    if (*pLoadedBaseAddr != clusterLoc.baseAddr)
     {
-        // Update current working address
-        setWorkingAddr(pFAT, clusterLoc.baseAddr, 0);
+        *pLoadedBaseAddr = clusterLoc.baseAddr;
 
-        // Read new block
-        // TODO: Should this just read single block for simplicity??
         sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterLoc.baseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector);
 
         // If the command fails, send invalid clusterID
-        return (cmdStatus == SD_READ_WRITE_FAIL) ? 0 : ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + clusterLoc.offset, clusterIdSize);
+        if (cmdStatus == SD_READ_WRITE_FAIL)
+        {
+            return 0;
+        }
     }
 
     return ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + clusterLoc.offset, clusterIdSize);
@@ -2045,6 +2018,9 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
+    // Track which FAT block is currently loaded to avoid redundant SD reads
+    uint32_t loadedBaseAddr = 0;
+
     uint32_t ClusterIdValue = 0xFFFF;
 
     while (ClusterIdValue != FAT_FREE_ID_MARKER)
@@ -2055,11 +2031,10 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
         // Look to the next ClusterID
         clusterLoc = getTableBlockAddr(pFAT, clusterID);
 
-        // Check if we need to update our working address
-        if (getWorkingAddr(pFAT).baseAddr != clusterLoc.baseAddr)
+        // Only read a new block when the cluster entry is in a different sector
+        if (loadedBaseAddr != clusterLoc.baseAddr)
         {
-            // Update current working address
-            setWorkingAddr(pFAT, clusterLoc.baseAddr, 0);
+            loadedBaseAddr = clusterLoc.baseAddr;
 
             // Read new block
             sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterLoc.baseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector);
@@ -2272,6 +2247,7 @@ fat_status_t FAT_getStat(FAT_Handle_t* pFAT)
 static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode)
 {
     uint32_t currClusterID = startCluster;
+    uint32_t loadedBaseAddr = 0;
 
     // Loop until ether the queue is full or EOF is found.
     do
@@ -2287,7 +2263,7 @@ static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, ui
         pNodesQueue->Tail = currClusterID;
 
         // Get the next clusterID
-        currClusterID = getNextClusterID(pFAT, currClusterID);
+        currClusterID = getNextClusterID(pFAT, currClusterID, &loadedBaseAddr);
 
         // Block Read Failure
         if (currClusterID == 0)
