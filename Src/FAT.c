@@ -258,9 +258,6 @@ static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, ui
 static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT);
 static void setWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t offset);
 /* FAT Directory Functions */
-static void goToRootDir(FAT_Handle_t* pFAT);
-
-
 
 static bool isEndOfDir(file_entry_t* file);
 static bool isLongFile(file_entry_t* file);
@@ -439,9 +436,6 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
 
     /* Update the FAT Handler Status */
     pFAT->FAT_Stat = INIT_FAT_SUCCESS;
-
-    /* Re-init the FAT to the root dir and set working dir */
-    goToRootDir(pFAT);
 }
 
 /****************************************************************************************
@@ -1826,23 +1820,6 @@ static void setWorkingAddr(FAT_Handle_t* pFAT, uint32_t WorkingAddr, uint32_t of
 static WorkingAddr_t getWorkingAddr(FAT_Handle_t* pFAT)
 {
     return pFAT->WorkingAddr;
-}
-
-/****************************************************************************************
- *	@fn 			     - goToRootDir
- *
- * 	@brief			     - Set the FAT working directory
- *
- * 	@param[pFAT]	 	 - Handler structure for FAT
- *
- * 	@return			     - none
- *
- * 	@note
- */
-static void goToRootDir(FAT_Handle_t* pFAT)
-{
-    // Set the Working Directory to the root dir
-    setWorkingAddr(pFAT, pFAT->SystemInfo.RootDirAddress, 0);
 }
 
 /*************************************************************************************************
