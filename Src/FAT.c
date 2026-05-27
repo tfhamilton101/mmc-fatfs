@@ -239,6 +239,7 @@ static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
  * 				Static Functions    			   *
  ***************************************************/
 static void getSystemInfo(FAT_Handle_t* pFAT);
+static fat_types_t getFatType(FAT_Handle_t* pFAT);
 
 // Remove the padded spaces from a file entry name & entension
 static void removeSpacePadding(uint8_t* text, uint8_t fieldSize);
