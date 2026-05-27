@@ -225,14 +225,7 @@ typedef enum
     MBR_END_MARKER = 0x01FE,
 } mbr_offsets_t;
 
-/*
- *  Structure to keep track of working Address
- */
-typedef struct
-{
-    uint32_t baseAddr;
-    uint32_t offset;
-} WorkingAddr_t;
+
 
 /***************************************************
  * 				Global Variables    			   *
@@ -258,7 +251,7 @@ static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueu
 
 static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
-static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
+static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
@@ -454,33 +447,30 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     // These local variables are used to make function statements shorter
     uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
     uint8_t* entryAddr = SD_GetBuffAddr(pFAT->pSDHandle);
-    WorkingAddr_t currAddr;
-    
-    // Initialize scan position from directory state
-    currAddr.baseAddr = dir->iterBaseAddr;
-    currAddr.offset = dir->iterOffset;
-    
-    sd_read_write_t cmdStatus = SD_READ_WRITE_FAIL;
 
+    // Initialize scan position from directory state
+    uint32_t currBaseAddr = dir->iterBaseAddr;
+    uint32_t currOffset = dir->iterOffset;
+    
     // Read new block if necessary
-    if (currAddr.offset >= rxBufferSize)
+    if (currOffset >= rxBufferSize)
     {
         // Increment the base address to the next sector
         if (getFatType(pFAT) == FAT_TYPE_FAT16)
         {
-            currAddr.baseAddr += rxBufferSize;
+            currBaseAddr += rxBufferSize;
         }
         else
         {
-            currAddr.baseAddr++;
+            currBaseAddr++;
         }
 
-        currAddr.offset = 0;
+        currOffset = 0;
 
-        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currAddr.baseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
+        sd_read_write_t status = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
 
         // Read Error Handling
-        if (cmdStatus == SD_READ_WRITE_FAIL)
+        if (status == SD_READ_WRITE_FAIL)
         {
             // Report the end of directory was found
             return false;
@@ -489,14 +479,14 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
     // The first byte of the filename have special value.
     // Skip over any deleted files.
-    while (*(entryAddr + currAddr.offset + FILENAME) == FILENAME_DELETED)
+    while (*(entryAddr + currOffset + FILENAME) == FILENAME_DELETED)
     {
         // Bump the pointer for the new entry
-        currAddr.offset += DIR_BYTES_PER_ENTRY;
+        currOffset += DIR_BYTES_PER_ENTRY;
     }
 
     // Get File Attribute
-    entry->FileAttribute = *(entryAddr + currAddr.offset + FILE_ATTRIBUTE);
+    entry->FileAttribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
 
     // Processing a short file name
     if (!isLongFile(entry))
@@ -505,11 +495,11 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
         memset(entry->Filename, 0, FILENAME_SIZE + 1);
 
         // Copy in Filename
-        strncpy((char*)entry->Filename, (char*)(entryAddr + currAddr.offset + FILENAME), FILENAME_SIZE);
+        strncpy((char*)entry->Filename, (char*)(entryAddr + currOffset + FILENAME), FILENAME_SIZE);
         removeSpacePadding(entry->Filename, FILENAME_SIZE);
 
         // Copy in File Extension
-        strncpylower(entry->FileExt, (entryAddr + currAddr.offset + FILE_EXTENSION), FILE_EXT_SHORT_SIZE);
+        strncpylower(entry->FileExt, (entryAddr + currOffset + FILE_EXTENSION), FILE_EXT_SHORT_SIZE);
         removeSpacePadding(entry->FileExt, FILE_EXT_SHORT_SIZE);
     }
     // Otherwise we need to process a long file name (VFAT)
@@ -531,7 +521,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
         StackInfo nameStack = initStack(filenameBuf, MAX_LFN_ENTRIES, sizeof(LFN_t));
 
         // The Ordinal field of the first LFN entry will inform us how many entries we need to process
-        uint8_t entriesToProcess = LowerNibble(*(entryAddr + currAddr.offset));
+        uint8_t entriesToProcess = LowerNibble(*(entryAddr + currOffset));
 
         // Keep the LFN Unicode character offsets in an array for quick access
         uint8_t entryCharOffsets[FILENAME_LF_SIZE] = {0x01, 0x03, 0x05, 0x07, 0x09, 0x0E, 0x10, 0x12, 0x14, 0x16, 0x18, 0x1C, 0x1E};
@@ -545,7 +535,7 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
             //  Copy the LFN entry temp storage
             for (k = 0; k < FILENAME_LF_SIZE; k++)
             {
-                unicodeChar = ToLittleEndian(entryAddr + currAddr.offset + entryCharOffsets[k], DATA_SIZE_HALF_WORD);
+                unicodeChar = ToLittleEndian(entryAddr + currOffset + entryCharOffsets[k], DATA_SIZE_HALF_WORD);
                 temp.longFilename[k] = LOBYTE(unicodeChar);
             }
             // Terminate the end of the string
@@ -555,27 +545,27 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
             pushStack(&nameStack, &temp);
 
             // Bump the pointer for the new entry
-            currAddr.offset += DIR_BYTES_PER_ENTRY;
+            currOffset += DIR_BYTES_PER_ENTRY;
 
             // Read new block if necessary
-            if (currAddr.offset >= rxBufferSize)
+            if (currOffset >= rxBufferSize)
             {
                 // Increment the base address to the next sector
                 if (getFatType(pFAT) == FAT_TYPE_FAT16)
                 {
-                    currAddr.baseAddr += rxBufferSize;
+                    currBaseAddr += rxBufferSize;
                 }
                 else
                 {
-                    currAddr.baseAddr++;
+                    currBaseAddr++;
                 }
 
-                currAddr.offset = 0;
+                currOffset = 0;
 
-                cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currAddr.baseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
+                sd_read_write_t status = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
 
                 // Read Error Handling
-                if (cmdStatus == SD_READ_WRITE_FAIL)
+                if (status == SD_READ_WRITE_FAIL)
                 {
                     // Report the end of directory was found
                     return false;
@@ -627,42 +617,42 @@ bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
     /* Get File Attribute. This must be obtained again for the actual file
 	 * metadata because the previous one could have been for the LFN entry	*/
-    entry->FileAttribute = *(entryAddr + currAddr.offset + FILE_ATTRIBUTE);
+    entry->FileAttribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
     // Get Time Created or Last Updated
-    entry->TimeModified = ToLittleEndian(entryAddr + currAddr.offset + FILE_TIME_MODIFIED, FILE_TIME_MODIFIED_SIZE);
+    entry->TimeModified = ToLittleEndian(entryAddr + currOffset + FILE_TIME_MODIFIED, FILE_TIME_MODIFIED_SIZE);
     // Get Date Created or Last Updated
-    entry->DateModified = ToLittleEndian(entryAddr + currAddr.offset + FILE_DATE_MODIFIED, FILE_DATE_MODIFIED_SIZE);
+    entry->DateModified = ToLittleEndian(entryAddr + currOffset + FILE_DATE_MODIFIED, FILE_DATE_MODIFIED_SIZE);
     // Get File Size
-    entry->FileSize = ToLittleEndian(entryAddr + currAddr.offset + FILE_SIZE, FILE_SIZE_SIZE);
+    entry->FileSize = ToLittleEndian(entryAddr + currOffset + FILE_SIZE, FILE_SIZE_SIZE);
 
     /***************	Save Directory  Block address and offset	***************/
     // Note: These are calculated this way since its possible to read with multi-block buffer
 
     // Offset into directory block
-    entry->DirEntryOffset = currAddr.offset % SD_DEFAULT_BLOCK_SIZE;
+    entry->DirEntryOffset = currOffset % SD_DEFAULT_BLOCK_SIZE;
 
     // Base address of block
-    entry->DirEntryBaseAddr = currAddr.baseAddr + ((currAddr.offset / SD_DEFAULT_BLOCK_SIZE) * getFatAddrUnit(pFAT));
+    entry->DirEntryBaseAddr = currBaseAddr + ((currOffset / SD_DEFAULT_BLOCK_SIZE) * getFatAddrUnit(pFAT));
 
     // Get File Starting Cluster
     if (getFatType(pFAT) == FAT_TYPE_FAT16)
     {
-        entry->StartingCluster = ToLittleEndian(entryAddr + currAddr.offset + FILE_START_CLUSTER_LO, FILE_START_CLUSTER_SIZE);
+        entry->StartingCluster = ToLittleEndian(entryAddr + currOffset + FILE_START_CLUSTER_LO, FILE_START_CLUSTER_SIZE);
     }
     else if (getFatType(pFAT) == FAT_TYPE_FAT32)
     {
-        uint32_t startClusterHi = ToLittleEndian(entryAddr + currAddr.offset + FILE_START_CLUSTER_HI, FILE_START_CLUSTER_SIZE);
-        uint32_t startClusterLo = ToLittleEndian(entryAddr + currAddr.offset + FILE_START_CLUSTER_LO, FILE_START_CLUSTER_SIZE);
+        uint32_t startClusterHi = ToLittleEndian(entryAddr + currOffset + FILE_START_CLUSTER_HI, FILE_START_CLUSTER_SIZE);
+        uint32_t startClusterLo = ToLittleEndian(entryAddr + currOffset + FILE_START_CLUSTER_LO, FILE_START_CLUSTER_SIZE);
 
         entry->StartingCluster = MAKEWORD(startClusterHi, startClusterLo);
     }
 
     // Bump the pointer for the new entry
-    currAddr.offset += DIR_BYTES_PER_ENTRY;
+    currOffset += DIR_BYTES_PER_ENTRY;
 
     // Update the directory scan state
-    dir->iterBaseAddr = currAddr.baseAddr;
-    dir->iterOffset = currAddr.offset;
+    dir->iterBaseAddr = currBaseAddr;
+    dir->iterOffset = currOffset;
 
     return !isEndOfDir(entry);
 }
@@ -1942,10 +1932,9 @@ static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster)
  *
  * 	@note  - // TODO: Test filling up FAT table to stress this
  */
-static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t clusterID)
+static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset)
 {
     uint32_t clusterIdSize, clusterIdBlock;
-    WorkingAddr_t blockAddr = {0};
 
     // Determine the size of the ClusterIDs
     clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
@@ -1955,12 +1944,10 @@ static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t clusterID)
 
     // Calculate the base address of block that holds the cluster
     uint32_t addrUnit = getFatAddrUnit(pFAT);
-    blockAddr.baseAddr = pFAT->SystemInfo.FAT1_Address + clusterIdBlock * addrUnit;
+    *pBaseAddr = pFAT->SystemInfo.FAT1_Address + clusterIdBlock * addrUnit;
 
     // Calculate the offset into that block
-    blockAddr.offset = (clusterID * clusterIdSize) % pFAT->SystemInfo.BytesPerSector;
-
-    return blockAddr;
+    *pOffset = (clusterID * clusterIdSize) % pFAT->SystemInfo.BytesPerSector;
 }
 
 /****************************************************************************************
@@ -1977,17 +1964,18 @@ static WorkingAddr_t getTableBlockAddr(FAT_Handle_t* pFAT, uint32_t clusterID)
  */
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr)
 {
-    WorkingAddr_t clusterLoc = getTableBlockAddr(pFAT, clusterID);
+    uint32_t clusterBaseAddr, clusterOffset;
+    getFatEntryAddr(pFAT, clusterID, &clusterBaseAddr, &clusterOffset);
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
     // Only read a new block when the cluster entry is in a different sector
-    if (*pLoadedBaseAddr != clusterLoc.baseAddr)
+    if (*pLoadedBaseAddr != clusterBaseAddr)
     {
-        *pLoadedBaseAddr = clusterLoc.baseAddr;
+        *pLoadedBaseAddr = clusterBaseAddr;
 
-        sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterLoc.baseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector);
+        sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterBaseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector);
 
         // If the command fails, send invalid clusterID
         if (cmdStatus == SD_READ_WRITE_FAIL)
@@ -1996,7 +1984,7 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
         }
     }
 
-    return ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + clusterLoc.offset, clusterIdSize);
+    return ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + clusterOffset, clusterIdSize);
 }
 
 /****************************************************************************************
@@ -2013,7 +2001,7 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
  */
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
 {
-    WorkingAddr_t clusterLoc;
+    uint32_t entryBaseAddr, entryOffset;
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
@@ -2029,15 +2017,15 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
         clusterID++;
 
         // Look to the next ClusterID
-        clusterLoc = getTableBlockAddr(pFAT, clusterID);
+        getFatEntryAddr(pFAT, clusterID, &entryBaseAddr, &entryOffset);
 
         // Only read a new block when the cluster entry is in a different sector
-        if (loadedBaseAddr != clusterLoc.baseAddr)
+        if (loadedBaseAddr != entryBaseAddr)
         {
-            loadedBaseAddr = clusterLoc.baseAddr;
+            loadedBaseAddr = entryBaseAddr;
 
             // Read new block
-            sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterLoc.baseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector);
+            sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, entryBaseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo.BytesPerSector);
 
             // If the command fails, send invalid clusterID
             if (cmdStatus == SD_READ_WRITE_FAIL)
@@ -2046,7 +2034,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
             }
         }
 
-        ClusterIdValue = ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + clusterLoc.offset, clusterIdSize);
+        ClusterIdValue = ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + entryOffset, clusterIdSize);
     }
 
     return clusterID;
@@ -2069,15 +2057,17 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID)
 {
 
-    WorkingAddr_t clusterLoc = getTableBlockAddr(pFAT, clusterID);
-    WorkingAddr_t nextLoc = getTableBlockAddr(pFAT, nextID);
+    uint32_t clusterBaseAddr, clusterOffset;
+    uint32_t nextBaseAddr, nextOffset;
+    getFatEntryAddr(pFAT, clusterID, &clusterBaseAddr, &clusterOffset);
+    getFatEntryAddr(pFAT, nextID, &nextBaseAddr, &nextOffset);
     uint8_t* fatBlock = SD_GetBuffAddr(pFAT->pSDHandle);
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
     // Read the FAT block
-    sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterLoc.baseAddr, 1);
+    sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterBaseAddr, 1);
 
 #if defined(FAT_DEBUG_TABLE)
     HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector);
@@ -2090,16 +2080,16 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
     }
 
     // If both ClusterID are in the same block it can be updated in one write
-    if (clusterLoc.baseAddr == nextLoc.baseAddr)
+    if (clusterBaseAddr == nextBaseAddr)
     {
         // Update the ClusterIDs
-        ToEndianBuf(fatBlock + clusterLoc.offset, nextID, clusterIdSize);
+        ToEndianBuf(fatBlock + clusterOffset, nextID, clusterIdSize);
         // NextID Terminated with EOF
-        ToEndianBuf(fatBlock + nextLoc.offset, FAT_EOF_MARKER_GENERIC, clusterIdSize);
+        ToEndianBuf(fatBlock + nextOffset, FAT_EOF_MARKER_GENERIC, clusterIdSize);
 
 #ifndef FAT_DEBUG_TABLE
         // Write the FAT Block
-        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterLoc.baseAddr, 1);
+        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterBaseAddr, 1);
 #endif
     }
     // Otherwise it will be updated in two read/writes
@@ -2110,24 +2100,24 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
 #endif
 
         // Update first ClusterID
-        ToEndianBuf(fatBlock + clusterLoc.offset, nextID, clusterIdSize);
+        ToEndianBuf(fatBlock + clusterOffset, nextID, clusterIdSize);
 #if defined(FAT_DEBUG_TABLE)
         HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
 #else
         // Write the FAT Block
-        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterLoc.baseAddr, 1);
+        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterBaseAddr, 1);
 #endif
 
         // Read Block and Update nextID
-        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, nextLoc.baseAddr, 1);
+        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, nextBaseAddr, 1);
         // NextID Terminated with EOF
-        ToEndianBuf(fatBlock + nextLoc.offset, FAT_EOF_MARKER_GENERIC, clusterIdSize);
+        ToEndianBuf(fatBlock + nextOffset, FAT_EOF_MARKER_GENERIC, clusterIdSize);
 
 #if defined(FAT_DEBUG_TABLE)
         HexdumpBuffer(fatBlock, pFAT->SystemInfo.BytesPerSector / 4);
 #else
         // Write the FAT Block
-        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, nextLoc.baseAddr, 1);
+        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, nextBaseAddr, 1);
 #endif
     }
 
