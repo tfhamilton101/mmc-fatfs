@@ -821,37 +821,31 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
 {
     uint8_t n, delimeterLoc;
     uint8_t pathSegment[FILENAME_MAX_SIZE + 1];
-    uint8_t fileNameBuf[FILENAME_MAX_SIZE + 1];
+    uint8_t pathBuf[FILENAME_MAX_SIZE + 1];
     uint32_t currDir = getWorkingDir(pFAT);
     
     // Create mutable copy of fileName to handle string constants
-    strncpy((char*)fileNameBuf, (char*)path, FILENAME_MAX_SIZE);
-    fileNameBuf[FILENAME_MAX_SIZE] = '\0';
+    strncpy((char*)pathBuf, (char*)path, FILENAME_MAX_SIZE);
+    pathBuf[FILENAME_MAX_SIZE] = '\0';
     
-    uint8_t* workingName = fileNameBuf;
-    uint8_t nameLen = strlen((char*)workingName);
+    uint8_t* workingPath = pathBuf;
+    uint8_t nameLen = strlen((char*)workingPath);
 
-    // If the name ends with a forward-slash remove it
-    if (workingName[nameLen - 1] == '/')
-    {
-        workingName[nameLen - 1] = '\0';
-        nameLen--;
-    }
 
-    if (strncmp((char*)workingName, "~", 1) == 0)
+    if (strncmp((char*)workingPath, "/", 1) == 0)
     {
-        // If the name is just "~/" we are looking for the volume lable
-        if(strlen((char*)workingName) == 1)
+        goToRootDir(pFAT);
+        
+        if(strlen((char*)workingPath) == 1)
         {
-            goToRootDir(pFAT);
-            strcpy((char*)workingName, (char*)pFAT->SystemInfo.VolumeLabel);
-            nameLen = strlen((char*)workingName);
+            // If the name is just "~/" we are looking for the volume lable
+            strcpy((char*)workingPath, (char*)pFAT->SystemInfo.VolumeLabel);
+            nameLen = strlen((char*)workingPath);
         }
         else
         {
-            workingName += 2;
-            nameLen -= 2;
-            goToRootDir(pFAT);
+            workingPath += 1;
+            nameLen -= 1;
         }
     }
 
@@ -859,11 +853,11 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
     for (n = 0, delimeterLoc = 0; n < nameLen; n++)
     {
         // Look for the delimiter
-        if (workingName[n] == '/')
+        if (workingPath[n] == '/')
         {
             if (delimeterLoc != n)
             {
-                strncpy((char*)pathSegment, (char*)&workingName[delimeterLoc], n - delimeterLoc);
+                strncpy((char*)pathSegment, (char*)&workingPath[delimeterLoc], n - delimeterLoc);
                 pathSegment[n - delimeterLoc] = '\0';
 
                 // Search for the file or directory
@@ -889,7 +883,7 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
     // Ex: Recipes/Baked Beans.txt
     if (delimeterLoc != n)
     {
-        strncpy((char*)pathSegment, (char*)&workingName[delimeterLoc], n - delimeterLoc);
+        strncpy((char*)pathSegment, (char*)&workingPath[delimeterLoc], n - delimeterLoc);
         pathSegment[n - delimeterLoc] = '\0';
 
         // Search for the file
@@ -1213,19 +1207,19 @@ static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename)
  ***************************************************************************************/
 
 /****************************************************************************************
- *	@fn                  - FAT_fopen
+ *	@fn              - FAT_fopen
  *
- * 	@brief               - Find a file and load the NodesQueue up
+ * 	@brief           - Find a file and load the NodesQueue up
  *
- * 	@param[pFAT]         - Handler structure for FAT
- * 	@param[fileName]     - name of the file
- * 	@param[file]         - Memory location the file details
- * 	@param[mode]         - File Mode
+ * 	@param[pFAT]     - Handler structure for FAT
+ * 	@param[path]     - name of the file
+ * 	@param[file]     - Memory location the file details
+ * 	@param[mode]     - File Mode
  *
- * 	@return              - Search status
+ * 	@return          - Search status
  *
  */
-fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, file_mode_t mode)
+fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode)
 {
     // Set our current working file
     setCurFile(pFAT, file);
@@ -1239,14 +1233,14 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     // This mode creates a new file if it does not exist
     if (mode == FILE_MODE_WRITE_NEW)
     {
-        if (createFile(pFAT, fileName, file) != FOPEN_SUCCESS)
+        if (createFile(pFAT, path, file) != FOPEN_SUCCESS)
         {
             return FOPEN_FAIL;
         }
     }
 
     // Search for the file
-    if (searchPath(pFAT, fileName, file) != FILESEARCH_FOUND)
+    if (searchPath(pFAT, path, file) != FILESEARCH_FOUND)
     {
         return FOPEN_NOT_FOUND;
     }
@@ -1272,6 +1266,9 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, 
     {
         file->scanBaseAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
         file->scanOffset = 0;
+
+        uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
+        SD_ReadBlock(pFAT->pSDHandle, file->scanBaseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
 
         // We don't need to load up the NodesQueue for a directory
         return FOPEN_SUCCESS;
