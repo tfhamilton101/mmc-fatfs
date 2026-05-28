@@ -155,7 +155,7 @@ void HexdumpBuffer(uint8_t* buf, uint32_t bufSize)
  *                     Sub Functions                       *
  ***********************************************************/
 
-dumpInfo_t FATdump(void* handle, uint32_t addr, uint32_t blocks)
+dumpInfo_t FATdumpAddr(void* handle, uint32_t addr, uint32_t blocks)
 {
     FAT_Handle_t* pFAT = (FAT_Handle_t*)handle;
     dumpInfo_t info = {0};
@@ -179,3 +179,8 @@ dumpInfo_t FATdump(void* handle, uint32_t addr, uint32_t blocks)
     return info;
 }
 
+dumpInfo_t FATdumpCluster(void* handle, uint32_t cluster, uint32_t blocks)
+{
+    uint32_t clusterAddr = FAT_GetClusterAddr((FAT_Handle_t *)handle, cluster);
+    return FATdumpAddr(handle, clusterAddr, blocks);
+}
