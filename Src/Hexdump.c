@@ -165,14 +165,8 @@ dumpInfo_t FATdumpAddr(void* handle, uint32_t addr, uint32_t blocks)
     info.buffSize = SD_GetBuffSize(pFAT->pSDHandle);
     info.pbuff = SD_GetBuffAddr(pFAT->pSDHandle);
 
-    if (blocks == 0)
-    {
-        info.addrUnit = getFatAddrUnit(pFAT);
-    }
-    else
-    {
-        info.addrUnit = getFatAddrUnit(pFAT) * blocks;
-    }
+    uint32_t addrUnit = (pFAT->SystemInfo.FAT_Type == FAT_TYPE_FAT16) ? pFAT->SystemInfo.BytesPerSector : 1;
+    info.addrUnit = (blocks == 0) ? addrUnit : addrUnit * blocks;
 
     SD_ReadBlock(pFAT->pSDHandle, addr, blocks);
 

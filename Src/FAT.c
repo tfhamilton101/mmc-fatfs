@@ -240,6 +240,7 @@ static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
  ***************************************************/
 static void getSystemInfo(FAT_Handle_t* pFAT);
 static fat_types_t getFatType(FAT_Handle_t* pFAT);
+static uint32_t getFatAddrUnit(FAT_Handle_t* pFAT);
 
 // Remove the padded spaces from a file entry name & entension
 static void removeSpacePadding(uint8_t* text, uint8_t fieldSize);
@@ -253,7 +254,7 @@ static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueu
 static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
-uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
+static uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);

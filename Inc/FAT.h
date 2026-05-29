@@ -235,11 +235,7 @@ bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
 bool FAT_IsHiddenFile(file_entry_t* file);
 bool FAT_IsDirectory(file_entry_t* file);
 
-/* Other Functions */
-uint32_t getFatAddrUnit(FAT_Handle_t* pFAT);
-
 fat_status_t FAT_getStat(FAT_Handle_t* pFAT);
-// TODO: CompressNodesQueue
 
 /* IRQ Functions */
 void FAT_IRQHandling(FAT_Handle_t* pFAT);
