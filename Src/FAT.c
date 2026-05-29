@@ -250,15 +250,13 @@ static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename);
 
 static fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
 static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
-
-static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
 static uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
-static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
+static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 /* FAT Directory Functions */
 
 static bool isEndOfDir(file_entry_t* file);
@@ -889,8 +887,8 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
  */
 static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 {
-    // Confirm the current file is being closed
-    if ((pFAT->CurrFile != file) || (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW))
+    // Confirm the file mode is for writing
+    if (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW)
     {
         return FWRITE_FAIL;
     }
@@ -1194,9 +1192,6 @@ static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename)
  */
 fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode)
 {
-    // Set our current working file
-    setCurFile(pFAT, file);
-
     // Error Checking
     if ((FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (mode != FILE_MODE_READ && mode != FILE_MODE_WRITE && mode != FILE_MODE_WRITE_NEW))
     {
@@ -1290,10 +1285,15 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
         if (mode == FILE_MODE_WRITE || mode == FILE_MODE_WRITE_NEW)
         {
             // Find the last cluster ID in the file
-            if (traverseTable(pFAT, pNodesQueue, file->StartingCluster, FAT_TRAVERSE_FIND_LAST_ID) == FLOAD_FAIL)
+            uint32_t lastClusterID = traverseTable(pFAT, pNodesQueue, file->StartingCluster, FAT_TRAVERSE_FIND_LAST_ID);
+            
+            if (lastClusterID == 0)
             {
                 return FLOAD_FAIL;
             }
+            
+            // Store the ending cluster for write operations
+            file->EndingCluster = lastClusterID;
 
             // Starting from the End of the file
             currClusterID = file->EndingCluster;
@@ -1324,16 +1324,30 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
         }
     }
 
-    // Fill the NodesQueue up with the next free ClusterIDs
+    /**  Fwrite - Fill NodesQueue up with the next free ClusterIDs ***/
     if (mode == FILE_MODE_WRITE || mode == FILE_MODE_WRITE_NEW)
     {
         return loadFreeClusterIDs(pFAT, pNodesQueue, currClusterID);
     }
-    else
+
+    /**  Read - Fill NodesQueue file ClusterIDs ***/
+
+    // Loop until ether the queue is full or EOF is found and Report the status
+    // Store the ending cluster
+    file->EndingCluster = traverseTable(pFAT, pNodesQueue, currClusterID, FAT_TRAVERSE_LOAD_QUEUE);
+
+    if (file->EndingCluster == 0)
     {
-        // Loop until ether the queue is full or EOF is found and Report the status
-        return traverseTable(pFAT, pNodesQueue, currClusterID, FAT_TRAVERSE_LOAD_QUEUE);
+        return FLOAD_FAIL;
     }
+
+    // Determine if EOF was reached by checking if pNodesQueue->Tail is an EOF marker
+    if (isEndofFatEntry(pFAT, pNodesQueue->Tail))
+    {
+        return FLOAD_EOF_FOUND;
+    }
+
+    return FLOAD_EOF_NOT_FOUND;
 }
 
 /****************************************************************************************
@@ -1352,12 +1366,6 @@ void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
     // Defining a local variable so the following statements are shorter.
     NodesQueue* pNodesQueue = &file->NodesQueue;
     uint32_t tempNode;
-
-    // Confirm the current file is being closed
-    if (pFAT->CurrFile != file)
-    {
-        return;
-    }
 
     // Close out the file state
     file->state = FILE_STATE_CLOSE;
@@ -1405,8 +1413,8 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
     static uint32_t currSectorNum = 0;
     static uint32_t currBaseAddr = 0;
 
-    // Exit if the NodesQueue is empty or the file argument is not the current file
-    if (isQueueEmpty(&pNodesQueue->Info) || (pFAT->CurrFile != file) 
+    // Exit if the NodesQueue is empty or file mode is not read
+    if (isQueueEmpty(&pNodesQueue->Info) 
        || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) 
        || (file->mode != FILE_MODE_READ))
     {
@@ -1541,8 +1549,8 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
     static uint32_t currSectorNum = 0;
     static uint32_t currBaseAddr = 0;
 
-    // Exit if the NodesQueue is empty or the file argument is not the current file
-    if (isQueueEmpty(&pNodesQueue->Info) || (pFAT->CurrFile != file) || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW))
+    // Exit if the NodesQueue is empty or file mode is not write
+    if (isQueueEmpty(&pNodesQueue->Info) || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW))
     {
         return FWRITE_NOP;
     }
@@ -1791,23 +1799,6 @@ static bool isLongFile(file_entry_t* file)
 /*************************************************************************************************
  *                                      Static Functions                                        *
  *************************************************************************************************/
-
-/****************************************************************************************
- *	@fn 			     - setCurFile
- *
- * 	@brief			     - Set the pointer to the current file. 
- *
- * 	@param[pFAT]	 	 - Handler structure for FAT
- * 	@param[file]	     - Memory location of file structure
- *
- * 	@return			     - None
- *
- */
-static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file)
-{
-    // The field is used to keep track of which file the application is currently accessing
-    pFAT->CurrFile = file;
-}
 
 /****************************************************************************************
  *	@fn 			     - removeSpacePadding
@@ -2237,7 +2228,7 @@ fat_status_t FAT_getStat(FAT_Handle_t* pFAT)
  *
  *  @note                 - 
  */
-static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode)
+static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode)
 {
     uint32_t currClusterID = startCluster;
     uint32_t loadedBaseAddr = 0;
@@ -2262,28 +2253,19 @@ static fat_fload_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, ui
         if (currClusterID == 0)
         {
             // TODO: Empty Queue?
-            return FLOAD_FAIL;
+            return 0; // Return 0 on failure
         }
 
     } while (!isQueueFull(&pNodesQueue->Info) && !isEndofFatEntry(pFAT, currClusterID));
 
-    if (isEndofFatEntry(pFAT, currClusterID))
-    {
-        // Sent Ending Cluster
-        pFAT->CurrFile->EndingCluster = pNodesQueue->Tail;
+    // Save the last valid cluster ID before updating Tail to EOF marker
+    uint32_t lastValidClusterID = pNodesQueue->Tail;
 
-        // Update the Queue Tail to EOF
-        pNodesQueue->Tail = currClusterID;
+    // Update the Queue Tail to EOF marker
+    pNodesQueue->Tail = currClusterID;
 
-        return FLOAD_EOF_FOUND;
-    }
-    else
-    {
-        // Use Non-Valid value
-        pFAT->CurrFile->EndingCluster = 0;
-
-        return FLOAD_EOF_NOT_FOUND;
-    }
+    // Return the last valid cluster ID (not the EOF marker)
+    return lastValidClusterID;
 }
 
 /*******************       IRQ Handling and callback       *******************/

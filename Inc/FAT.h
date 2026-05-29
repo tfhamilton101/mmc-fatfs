@@ -176,7 +176,6 @@ typedef struct
     fat_status_t FAT_Stat;
     SD_Handle_t* pSDHandle;
     System_info_t SystemInfo;
-    file_entry_t* CurrFile;
 } FAT_Handle_t;
 
 /**************************************************
