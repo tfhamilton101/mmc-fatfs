@@ -18,8 +18,6 @@
  *    Directory File Macros 	  *
  **********************************/
 
-// Maximum number of entries supported by VFAT. (255 bytes / 13 bytes per entry)
-#define VFAT_MAX_ENTRIES 20
 // Maximum number of entries this driver supports. (Max LFN is 52 characters)
 #define MAX_LFN_ENTRIES 4
 
@@ -83,28 +81,6 @@ typedef struct
     uint32_t iterBaseAddr;
     uint32_t iterOffset;
 } file_entry_t;
-
-/**********************************
- *      File search macros		  *
- **********************************/
-
-// Search status
-typedef enum
-{
-    FILESEARCH_FAIL = 0,
-    FILESEARCH_NOT_FOUND,
-    FILESEARCH_DIR_NOT_FOUND,
-    FILESEARCH_FOUND,
-} Search_Status_t;
-
-// Search Mode
-typedef enum
-{
-    SEARCH_FILE_LOCAL = 0,
-    SEARCH_FILE_RECURSIVE,
-    SEARCH_DIR_LOCAL,
-    SEARCH_DIR_RECURSIVE,
-} Search_Mode_t;
 
 /*
  *  Structure for System information

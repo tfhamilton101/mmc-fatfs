@@ -184,6 +184,27 @@ typedef enum
     FLOAD_EOF_FOUND,
 } fat_fload_t;
 
+/**********************************
+ *      File search enums		  *
+ **********************************/
+
+// Search status
+typedef enum
+{
+    FILESEARCH_FAIL = 0,
+    FILESEARCH_NOT_FOUND,
+    FILESEARCH_DIR_NOT_FOUND,
+    FILESEARCH_FOUND,
+} Search_Status_t;
+
+// Search Mode
+typedef enum
+{
+    SEARCH_FILE_LOCAL = 0,
+    SEARCH_FILE_RECURSIVE,
+    SEARCH_DIR_LOCAL,
+    SEARCH_DIR_RECURSIVE,
+} Search_Mode_t;
 
 /**********************************
  *  Macros to get Time and Date   *
