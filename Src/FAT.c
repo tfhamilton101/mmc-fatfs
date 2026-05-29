@@ -434,7 +434,7 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_ScanDir
+ *	@fn 			     - FAT_ReadDir
  *
  * 	@brief			     - Parse a file information from a directory
  *
@@ -444,7 +444,7 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
  * 	@return			     - False if we reached the end of directory. True otherwise
  *
  */
-bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
+bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 {
     // These local variables are used to make function statements shorter
     uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
@@ -726,7 +726,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
         tempDir.iterOffset = 0;
 
         // Scan Until we find the end of the directory
-        while ((entryCount < entriesPerDir) && FAT_ScanDir(pFAT, &tempDir, file))
+        while ((entryCount < entriesPerDir) && FAT_ReadDir(pFAT, &tempDir, file))
         {
             // Increment the entry count
             entryCount++;

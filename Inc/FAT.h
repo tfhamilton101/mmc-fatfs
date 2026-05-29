@@ -229,7 +229,7 @@ bool FAT_feof(file_entry_t* file);
 fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
 
 /* FAT Directory / File Searching Functions */
-bool FAT_ScanDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
+bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
 
 /* FAT File Attribute Functions */
 bool FAT_IsHiddenFile(file_entry_t* file);
