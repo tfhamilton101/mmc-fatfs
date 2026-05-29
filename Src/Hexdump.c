@@ -178,9 +178,3 @@ dumpInfo_t FATdumpAddr(void* handle, uint32_t addr, uint32_t blocks)
 
     return info;
 }
-
-dumpInfo_t FATdumpCluster(void* handle, uint32_t cluster, uint32_t blocks)
-{
-    uint32_t clusterAddr = FAT_GetClusterAddr((FAT_Handle_t *)handle, cluster);
-    return FATdumpAddr(handle, clusterAddr, blocks);
-}

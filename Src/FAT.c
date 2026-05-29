@@ -253,6 +253,7 @@ static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueu
 static void setCurFile(FAT_Handle_t* pFAT, file_entry_t* file);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
+uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
 static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
@@ -740,7 +741,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
             // If we have found a new directory, add it to the queue
             if (hasFileFlag(file, FILE_FLAG_DIRECTORY) && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
             {
-                tempAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
+                tempAddr = getClusterAddr(pFAT, file->StartingCluster);
                 enqueue(&addrQueue, &tempAddr);
             }
         }
@@ -843,7 +844,7 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
                 if (findDirectory(pFAT, pathSegment, file, SEARCH_DIR_LOCAL, currSearchDir) == FILESEARCH_FOUND)
                 {
                     // Descend into the found sub-directory
-                    currSearchDir = FAT_GetClusterAddr(pFAT, file->StartingCluster);
+                    currSearchDir = getClusterAddr(pFAT, file->StartingCluster);
                 }
                 else
                 {
@@ -1235,7 +1236,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file
     // Initialize directory scan state if this is a directory
     if (FAT_IsDirectory(file) || hasFileFlag(file, FILE_FLAG_VOLUME))
     {
-        file->iterBaseAddr = FAT_GetClusterAddr(pFAT, file->StartingCluster);
+        file->iterBaseAddr = getClusterAddr(pFAT, file->StartingCluster);
         file->iterOffset = 0;
 
         uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
@@ -1441,7 +1442,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
         peekQueue(&pNodesQueue->Info, &tempNode);
         
         // Update the current base address
-        currBaseAddr = FAT_GetClusterAddr(pFAT, tempNode);
+        currBaseAddr = getClusterAddr(pFAT, tempNode);
     }
     
     // Read the current data block
@@ -1570,7 +1571,7 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
 
         // Calculate current sector number and base address
         currSectorNum = bytesPerFinalCluster / systemInfo->BytesPerSector;
-        currBaseAddr = FAT_GetClusterAddr(pFAT, tempNode) + (currSectorNum * addrUnit);
+        currBaseAddr = getClusterAddr(pFAT, tempNode) + (currSectorNum * addrUnit);
     }
     else if (file->state == FILE_STATE_WRITE)
     {
@@ -1580,7 +1581,7 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
             peekQueue(&pNodesQueue->Info, &tempNode);
 
             // Update the current base address
-            currBaseAddr = FAT_GetClusterAddr(pFAT, tempNode);
+            currBaseAddr = getClusterAddr(pFAT, tempNode);
         }
     }
     else
@@ -1667,14 +1668,14 @@ bool FAT_feof(file_entry_t* file)
  */
 fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file)
 {
-    sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, FAT_GetClusterAddr(pFAT, file->StartingCluster), 1);
+    sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, getClusterAddr(pFAT, file->StartingCluster), 1);
 
     // Return read status
     return (cmdStatus == SD_READ_WRITE_FAIL) ? FREAD_FAIL : FREAD_DONE;
 }
 
 /****************************************************************************************
- *	@fn 			     - FAT_GetClusterAddress
+ *	@fn 			     - getClusterAddress
  *
  * 	@brief			     - Return the starting address of a given cluster
  *
@@ -1685,7 +1686,7 @@ fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file)
  *
  * 	@note   - There is cluster 0 or 1. Cluster’s IDs begin from 2
  */
-uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID)
+uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID)
 {
     uint32_t addrUnit = getFatAddrUnit(pFAT);
 

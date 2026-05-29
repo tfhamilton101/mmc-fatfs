@@ -36,6 +36,5 @@ void HexdumpBuffer(uint8_t* buf, uint32_t bufSize);
 
 // Sub Functions
 dumpInfo_t FATdumpAddr(void* handle, uint32_t addr, uint32_t blocks);
-dumpInfo_t FATdumpCluster(void* handle, uint32_t cluster, uint32_t blocks);
 
 #endif /* INC_HEXDUMP_H_ */

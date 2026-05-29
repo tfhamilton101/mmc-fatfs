@@ -236,7 +236,6 @@ bool FAT_IsHiddenFile(file_entry_t* file);
 bool FAT_IsDirectory(file_entry_t* file);
 
 /* Other Functions */
-uint32_t FAT_GetClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 uint32_t getFatAddrUnit(FAT_Handle_t* pFAT);
 
 fat_status_t FAT_getStat(FAT_Handle_t* pFAT);
