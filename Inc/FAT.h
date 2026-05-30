@@ -167,13 +167,13 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
 int FAT_fopenDir(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
 int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
 int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t size);
-void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
+int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
 bool FAT_feof(file_entry_t* file);
 
 int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
 
 /* FAT Directory / File Searching Functions */
-bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
+int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
 
 /* FAT File Attribute Functions */
 bool FAT_IsHiddenFile(file_entry_t* file);

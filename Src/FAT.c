@@ -462,10 +462,10 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
  * 	@param[pFAT]	 	 - Handler structure for FAT
  * 	@param[file]		 - Memory location to store file details
  *
- * 	@return			     - False if we reached the end of directory. True otherwise
+ * 	@return			     - 1 if entry found, 0 if end-of-directory, negative errno on error
  *
  */
-bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
+int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 {
     // These local variables are used to make function statements shorter
     uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
@@ -495,8 +495,8 @@ bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
         // Read Error Handling
         if (status == SD_READ_WRITE_FAIL)
         {
-            // Report the end of directory was found
-            return false;
+            // Report SD I/O error
+            return -EIO;
         }
     }
 
@@ -590,8 +590,8 @@ bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
                 // Read Error Handling
                 if (status == SD_READ_WRITE_FAIL)
                 {
-                    // Report the end of directory was found
-                    return false;
+                    // Report SD I/O error
+                    return -EIO;
                 }
             }
         }
@@ -677,7 +677,8 @@ bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     dir->iterBaseAddr = currBaseAddr;
     dir->iterOffset = currOffset;
 
-    return !isEndOfDir(entry);
+    // Return 1 if entry found, 0 if end-of-directory
+    return isEndOfDir(entry) ? 0 : 1;
 }
 
 /****************************************************************************************
@@ -747,7 +748,8 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
         tempDir.iterOffset = 0;
 
         // Scan Until we find the end of the directory
-        while ((entryCount < entriesPerDir) && FAT_ReadDir(pFAT, &tempDir, file))
+        int readDirResult;
+        while ((entryCount < entriesPerDir) && (readDirResult = FAT_ReadDir(pFAT, &tempDir, file)) > 0)
         {
             // Increment the entry count
             entryCount++;
@@ -1386,10 +1388,10 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
  *  @param[pFAT]         - Handler structure for FAT
  *  @param[file]         - Memory location the file details
  *
- * 	@return			     - Search status
+ * 	@return			     - 0 on success, negative errno on error
  *
  */
-void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
+int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
 {
     // Defining a local variable so the following statements are shorter.
     NodesQueue* pNodesQueue = &file->NodesQueue;
@@ -1400,21 +1402,21 @@ void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
 
     if (file->mode == FILE_MODE_WRITE || file->mode == FILE_MODE_WRITE_NEW)
     {
-        // Update directory entry
-        updateDirEntry(pFAT, file);
+        // Update directory entry and return error code
+        return updateDirEntry(pFAT, file);
     }
-    else
-    {
-        // Initialized the tail to Zero which is a non-acceptable clusterID
-        pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
 
-        // Empty out the NodesQueue
-        while (!isQueueEmpty(&pNodesQueue->Info))
-        {
-            // queue the directory at the head of the queue
-            dequeue(&pNodesQueue->Info, &tempNode);
-        }
+    // Initialized the tail to Zero which is a non-acceptable clusterID
+    pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
+
+    // Empty out the NodesQueue
+    while (!isQueueEmpty(&pNodesQueue->Info))
+    {
+        // queue the directory at the head of the queue
+        dequeue(&pNodesQueue->Info, &tempNode);
     }
+
+    return 0;
 }
 
 /****************************************************************************************
@@ -1837,21 +1839,6 @@ static bool isLongFile(file_entry_t* file)
 {
     return file->FileAttribute == FILE_FLAG_LFN;
 }
-
-/****************************************************************************************
- *	@fn 			     - setWorkingAddr
- *
- * 	@brief			     - Set the FAT working address
- *
- * 	@param[pFAT]	 	 - Handler structure for FAT
- * 	@param[WorkingAddr]	 - Handler structure for FAT
- * 	@param[offset]	 	 - Handler structure for FAT
- *
- * 	@return			     - none
- *
-/*************************************************************************************************
- *                                      Static Functions                                        *
- *************************************************************************************************/
 
 /****************************************************************************************
  *	@fn 			     - removeSpacePadding
