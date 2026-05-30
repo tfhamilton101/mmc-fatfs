@@ -1566,16 +1566,35 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
  *
  *  @param[pFAT]         - Handler structure for FAT
  *  @param[file]         - Memory location the file details
+ *  @param[buffer]       - Pointer to data buffer to write
+ *  @param[size]         - Number of bytes to write from buffer
  *
- * 	@return			     - Search status
+ * 	@return			     - 0 on success, negative error code on failure
  *
  */
-int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
+int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t size)
 {
     NodesQueue* pNodesQueue = &file->NodesQueue;
 
     static uint32_t currSectorNum = 0;
     static uint32_t currBaseAddr = 0;
+
+    // Parameter validation
+    if (buffer == NULL)
+    {
+        return -EINVAL;
+    }
+
+    if (size == 0)
+    {
+        return -EINVAL;
+    }
+
+    uint32_t sdBufSize = SD_GetBuffSize(pFAT->pSDHandle);
+    if (size > sdBufSize)
+    {
+        return -EINVAL;
+    }
 
     // Exit if the NodesQueue is empty or file mode is not write
     if (isQueueEmpty(&pNodesQueue->Info) || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW))
@@ -1583,11 +1602,16 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
         return -EINVAL;
     }
 
+    // Copy user buffer to SD buffer and clear remainder
+    uint8_t* sdBuf = SD_GetBuffAddr(pFAT->pSDHandle);
+    memcpy(sdBuf, buffer, size);
+    memset(sdBuf + size, 0, sdBufSize - size);
+
     uint32_t tempNode;
     uint32_t addrUnit = getFatAddrUnit(pFAT);
     
     System_info_t* systemInfo = &pFAT->SystemInfo;
-    uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / systemInfo->BytesPerSector;
+    uint32_t sectorsPerBuffer = sdBufSize / systemInfo->BytesPerSector;
 
     // Only write up to a cluster at a time, even if the buffer can hold more. 
     uint32_t sectorsToWrite = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
@@ -1626,7 +1650,7 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
         return -EINVAL;
     }
 
-    // Read the current data block
+    // Write the current data block
     if (SD_WriteBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite) == SD_READ_WRITE_FAIL)
     {
         // Report Issue
@@ -1636,13 +1660,13 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
     // Determine how File size needs to be updated
     if (file->EndingCluster == tempNode)
     {
-        uint32_t finalBlockOffset = file->FileSize % SD_GetBuffSize(pFAT->pSDHandle);
+        uint32_t finalBlockOffset = file->FileSize % size;
 
-        file->FileSize += SD_GetBuffSize(pFAT->pSDHandle) - finalBlockOffset;
+        file->FileSize += size - finalBlockOffset;
     }
     else
     {
-        file->FileSize += SD_GetBuffSize(pFAT->pSDHandle);
+        file->FileSize += size;
     }
 
     // Determine how the current sector needs to be incremented
