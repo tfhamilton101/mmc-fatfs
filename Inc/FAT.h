@@ -154,37 +154,6 @@ typedef struct
     System_info_t SystemInfo;
 } FAT_Handle_t;
 
-/**************************************************
- *           FAT File I/O Return Types            *
- **************************************************/
-
-// Fopen Return type
-typedef enum
-{
-    FOPEN_FAIL = 0,
-    FOPEN_NOP,
-    FOPEN_NOT_FOUND,
-    FOPEN_SUCCESS,
-} fat_open_t;
-
-// Fread Return type
-typedef enum
-{
-    FREAD_FAIL = 0,
-    FREAD_NOP,
-    FREAD_EOF_FOUND,
-    FREAD_DONE,
-} fat_fread_t;
-
-// Fwrite Return type
-typedef enum
-{
-    FWRITE_FAIL = 0,
-    FWRITE_NOP,
-    FWRITE_SUCCESS,
-    FWRITE_DONE,
-} fat_fwrite_t;
-
 /************************************************************************************
  *			        		APIs supported by this driver							*
  * 		   For more information about the APIs check the function definitions		*
@@ -194,14 +163,14 @@ typedef enum
 fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
 
 /* File Read / Write functions */
-fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
-fat_open_t FAT_fopenDir(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
-fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
-fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file);
+int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
+int FAT_fopenDir(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
+int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
+int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file);
 void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
 bool FAT_feof(file_entry_t* file);
 
-fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
+int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
 
 /* FAT Directory / File Searching Functions */
 bool FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);

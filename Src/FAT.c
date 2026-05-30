@@ -6,6 +6,7 @@
  ****************************************/
 
 #include "FAT.h"
+#include <errno.h>
 #include "stm32f4xx_dma_driver.h"
 #include "Stack.h"
 #include "Utils.h"
@@ -275,7 +276,7 @@ static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
 static uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
 static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
-static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
+static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
 static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
 static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 /* FAT Directory Functions */
@@ -285,11 +286,11 @@ static bool isLongFile(file_entry_t* file);
 static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 
 // Create new file
-static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
+static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
 static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
 static Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
 static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
-static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
+static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 
 
 
@@ -906,12 +907,12 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
  *                 * // TODO: updateFileSize
  *
  */
-static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
+static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 {
     // Confirm the file mode is for writing
     if (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW)
     {
-        return FWRITE_FAIL;
+        return -EINVAL;
     }
 
     sd_read_write_t cmdStatus = SD_READ_WRITE_FAIL;
@@ -925,7 +926,7 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
         // Report Issue
-        return FWRITE_FAIL;
+        return -EIO;
     }
 
     // TODO: Remove these debug
@@ -936,7 +937,7 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
     if (file->FileSize == ToLittleEndian(entryfileSize, FILE_SIZE_SIZE))
     {
         // Nothing has changed
-        return FWRITE_NOP;
+        return -EINVAL;
     }
 
     ToEndianBuf(entryfileSize, file->FileSize, DATA_SIZE_WORD);
@@ -948,7 +949,7 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
     // Write updates to the Directory block
     cmdStatus = SD_WriteBlock(pFAT->pSDHandle, file->DirEntryBaseAddr, 1);
 
-    return (cmdStatus == SD_READ_WRITE_FAIL) ? FWRITE_FAIL : FWRITE_SUCCESS;
+    return (cmdStatus == SD_READ_WRITE_FAIL) ? -EIO : 0;
 }
 
 /****************************************************************************************
@@ -963,15 +964,20 @@ static fat_fwrite_t updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
  * 
  *                       -
  */
-static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
+static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 {
     // Search for the file
     Search_Status_t searchStat = searchPath(pFAT, fileName, file);
 
     // Report error if the file already exists or the directory does not
-    if ((searchStat == FILESEARCH_FOUND) || (searchStat == FILESEARCH_DIR_NOT_FOUND))
+    if (searchStat == FILESEARCH_FOUND)
     {
-        return FOPEN_NOP;
+        return -EEXIST;
+    }
+    
+    if (searchStat == FILESEARCH_DIR_NOT_FOUND)
+    {
+        return -ENOENT;
     }
 
     /***********  Create a new entry in the FAT table  ***********/
@@ -981,9 +987,9 @@ static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t
 
 #ifndef FAT_DEBUG_GENERIC
     // Create the new entry in the FAT
-    if (updateClusterID(pFAT, file->StartingCluster, file->StartingCluster) == FWRITE_FAIL)
+    if (updateClusterID(pFAT, file->StartingCluster, file->StartingCluster) != 0)
     {
-        return FOPEN_FAIL;
+        return -EIO;
     }
 #endif
 
@@ -1134,7 +1140,7 @@ static fat_open_t createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t
     HexdumpBuffer(SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo.BytesPerSector * writeCount);
 #endif
 
-    return (cmdStatus == SD_READ_WRITE_FAIL) ? FOPEN_FAIL : FOPEN_SUCCESS;
+    return (cmdStatus == SD_READ_WRITE_FAIL) ? -EIO : 0;
 }
 
 /****************************************************************************************
@@ -1211,27 +1217,28 @@ static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename)
  * 	@return          - Search status
  *
  */
-fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode)
+int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode)
 {
     // Error Checking
     if ((FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (mode != FILE_MODE_READ && mode != FILE_MODE_WRITE && mode != FILE_MODE_WRITE_NEW))
     {
-        return FOPEN_NOP;
+        return -EINVAL;
     }
 
     // This mode creates a new file if it does not exist
     if (mode == FILE_MODE_WRITE_NEW)
     {
-        if (createFile(pFAT, path, file) != FOPEN_SUCCESS)
+        int ret = createFile(pFAT, path, file);
+        if (ret != 0)
         {
-            return FOPEN_FAIL;
+            return ret;  // Pass through error from createFile
         }
     }
 
     // Search for the file
     if (searchPath(pFAT, path, file) != FILESEARCH_FOUND)
     {
-        return FOPEN_NOT_FOUND;
+        return -ENOENT;
     }
 
     file->mode = mode;
@@ -1260,7 +1267,7 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file
         SD_ReadBlock(pFAT->pSDHandle, file->iterBaseAddr, rxBufferSize / pFAT->SystemInfo.BytesPerSector);
 
         // We don't need to load up the NodesQueue for a directory
-        return FOPEN_SUCCESS;
+        return 0;
     }
 
     // Load Up the NodesQueue
@@ -1269,10 +1276,10 @@ fat_open_t FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file
     // Return Types
     if ((loadStatus == FLOAD_EOF_FOUND) || (loadStatus == FLOAD_EOF_NOT_FOUND))
     {
-        return FOPEN_SUCCESS;
+        return 0;
     }
 
-    return FOPEN_FAIL;
+    return -EIO;
 }
 
 /****************************************************************************************
@@ -1426,7 +1433,7 @@ void FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
  *                           wait for completion before next read. Size accounts for final 
  *                           block when EOF is reached.
  */
-fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size)
+int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size)
 {
     NodesQueue* pNodesQueue = &file->NodesQueue;
 
@@ -1439,7 +1446,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
        || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) 
        || (file->mode != FILE_MODE_READ))
     {
-        return FREAD_NOP;
+        return -EINVAL;
     }
 
     // Reset the Static variables on the first write
@@ -1483,7 +1490,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
         // Report Issue
-        return FREAD_FAIL;
+        return -EIO;
     }
 
     sectorsRead += sectorsToRead;
@@ -1505,7 +1512,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
         *size = file->FileSize % bufSize;
         SD_ToggleCurrBuff(pFAT->pSDHandle);
 
-        return FREAD_EOF_FOUND;
+        return 0;
     }
 
     // Determine how the current sector needs to be incremented
@@ -1536,7 +1543,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
                 }
 
                 // Report Issue
-                return FREAD_FAIL;
+                return -EIO;
             }
         }
 
@@ -1549,7 +1556,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
     *size = sectorsToRead * systemInfo->BytesPerSector;
     SD_ToggleCurrBuff(pFAT->pSDHandle);
 
-    return FREAD_DONE;
+    return 0;
 }
 
 /****************************************************************************************
@@ -1563,7 +1570,7 @@ fat_fread_t FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, ui
  * 	@return			     - Search status
  *
  */
-fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
+int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
 {
     NodesQueue* pNodesQueue = &file->NodesQueue;
 
@@ -1573,7 +1580,7 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
     // Exit if the NodesQueue is empty or file mode is not write
     if (isQueueEmpty(&pNodesQueue->Info) || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS) || (file->mode != FILE_MODE_WRITE && file->mode != FILE_MODE_WRITE_NEW))
     {
-        return FWRITE_NOP;
+        return -EINVAL;
     }
 
     uint32_t tempNode;
@@ -1616,14 +1623,14 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
     }
     else
     {
-        return FWRITE_NOP;
+        return -EINVAL;
     }
 
     // Read the current data block
     if (SD_WriteBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite) == SD_READ_WRITE_FAIL)
     {
         // Report Issue
-        return FWRITE_FAIL;
+        return -EIO;
     }
 
     // Determine how File size needs to be updated
@@ -1651,9 +1658,10 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
         // Update FAT Table Entry
         if (file->EndingCluster != tempNode)
         {
-            if (updateClusterID(pFAT, file->EndingCluster, tempNode) == FWRITE_FAIL)
+            int ret = updateClusterID(pFAT, file->EndingCluster, tempNode);
+            if (ret != 0)
             {
-                return FWRITE_FAIL;
+                return ret;  // Pass through error
             }
         }
 
@@ -1664,7 +1672,7 @@ fat_fwrite_t FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file)
         currSectorNum = 0;
     }
 
-    return FWRITE_DONE;
+    return 0;
 }
 
 /****************************************************************************************
@@ -1696,12 +1704,12 @@ bool FAT_feof(file_entry_t* file)
  *
  *  @note              - 
  */
-fat_fread_t FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file)
+int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file)
 {
     sd_read_write_t cmdStatus = SD_ReadBlock(pFAT->pSDHandle, getClusterAddr(pFAT, file->StartingCluster), 1);
 
     // Return read status
-    return (cmdStatus == SD_READ_WRITE_FAIL) ? FREAD_FAIL : FREAD_DONE;
+    return (cmdStatus == SD_READ_WRITE_FAIL) ? -EIO : 0;
 }
 
 /****************************************************************************************
@@ -2069,7 +2077,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
  *
  *  @note  - Inputs clusterID = nextID is used to create new table entry
  */
-static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID)
+static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID)
 {
 
     uint32_t clusterBaseAddr, clusterOffset;
@@ -2091,7 +2099,7 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
     // Error Handling
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
-        return FWRITE_FAIL;
+        return -EIO;
     }
 
     // If both ClusterID are in the same block it can be updated in one write
@@ -2143,11 +2151,11 @@ static fat_fwrite_t updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint
     // Error Handling
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
-        return FWRITE_FAIL;
+        return -EIO;
     }
     else
     {
-        return FWRITE_SUCCESS;
+        return 0;
     }
 }
 
