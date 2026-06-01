@@ -232,6 +232,16 @@ typedef enum
     WRITE_DATA_REJECTED_ERR = 0xED,
 } sd_write_tokens_t;
 
+
+/*
+ * @SD_CardType
+ */
+typedef enum
+{
+    SD_CARDTYPE_SDSC = 0,
+    SD_CARDTYPE_SDXC_SDHC = 1,
+} sd_card_types_t;
+
 /************************************************************************************
  *                              SD Init States                                      
  *************************************************************************************/
@@ -563,9 +573,9 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
         return INIT_FAIL;
     }
 
-    pSDHandle->SD_CardType = ((CmdResponse.R3.OCR >> OCR_CCS) & 0x1);
+    sd_card_types_t card_type = ((CmdResponse.R3.OCR >> OCR_CCS) & 0x1);
 
-    if (pSDHandle->SD_CardType == SD_CARDTYPE_SDSC)
+    if (card_type == SD_CARDTYPE_SDSC)
     {
         setBlockLength(pSDHandle);
     }

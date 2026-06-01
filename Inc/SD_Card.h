@@ -64,14 +64,6 @@ typedef enum
     SD_TRANSFER_DMA,
 } sd_trans_modes_t;
 
-/*
- * @SD_CardType
- */
-typedef enum
-{
-    SD_CARDTYPE_SDSC = 0,
-    SD_CARDTYPE_SDXC_SDHC = 1,
-} sd_card_types_t;
 
 /*
  * @bufferInfo_t
@@ -117,7 +109,6 @@ typedef struct
 {
     sd_mode_t SD_Mode;                /*!  < possible values from @SD_mode>          */
     sd_crc_modes_t SD_CRCEn;          /*!  < possible values from @SD_CRCEn>         */
-    sd_card_types_t SD_CardType;      /*!  < possible values from @SD_CardType>      */
     SD_States_t SD_CardState;         /*!  < possible values from @SD_CardState>     */
     sd_trans_modes_t SD_TransferMode; /*   < possible values from @SD_TransferMode   */
     bufferInfo_t bufferInfo;          /*   Buffer Info Structure                     */
