@@ -128,18 +128,6 @@ typedef struct
     Timeout_t cmdTimeout;             /*   Timer Handler for Command Timeouts        */
 } SD_Handle_t;
 
-/************************************************************************* 
- *                         SD Command Typedefs                           * 
- *************************************************************************/
-
-/*
- *  SD Read/Write Return types
- */
-typedef enum
-{
-    SD_READ_WRITE_FAIL = 0,
-    SD_READ_WRITE_SUCCESS,
-} sd_read_write_t;
 
 
 /************************************************************************************
@@ -190,8 +178,9 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
 void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma);
 
 /* Read / Write function */
-sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
-sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
+/* Returns 0 on success, negative errno on failure (-EINVAL, -ETIMEDOUT, or -EIO) */
+int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
+int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
 
 /* Helper function */
 SD_States_t SD_GetState(SD_Handle_t* pSDHandle);

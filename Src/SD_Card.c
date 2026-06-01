@@ -923,15 +923,15 @@ static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
  * 	@param[BlockAddr]	 - Block Address
  * 	@param[BlockCount]	 - Block Count
  *
- * 	@return			     - Read status
+ * 	@return			     - 0 on success, negative errno on failure
  *
  * 	@note				 -
  */
-sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
+int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
 {
     if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
     {
-        return SD_READ_WRITE_FAIL;
+        return -EINVAL;
     }
 
     // Assert chip select low
@@ -946,7 +946,7 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
     if (CmdResponse.R1.Flags != 0x00)
     {
         chipSelectControl(pSDHandle, HIGH);
-        return SD_READ_WRITE_FAIL;
+        return -EIO;
     }
 
     /***   Receive Block Read    ****/
@@ -986,7 +986,7 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
 
             // Set Fail flags
             pSDHandle->SD_CardState = SD_STATE_FAIL;
-            return SD_READ_WRITE_FAIL;
+            return -ETIMEDOUT;
         }
 
         // Read the data block
@@ -1005,7 +1005,7 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
     // Release chip select
     chipSelectControl(pSDHandle, HIGH);
 
-    return SD_READ_WRITE_SUCCESS;
+    return 0;
 }
 
 /****************************************************************************************
@@ -1017,15 +1017,15 @@ sd_read_write_t SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_
  * 	@param[BlockAddr]	 - Block Address
  * 	@param[BlockCount]	 - Block Count
  *
- * 	@return			     - Read status
+ * 	@return			     - 0 on success, negative errno on failure
  *
  * 	@note				 -
  */
-sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
+int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
 {
     if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
     {
-        return SD_READ_WRITE_FAIL;
+        return -EINVAL;
     }
 
     // Assert chip select low
@@ -1040,7 +1040,7 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
     if (CmdResponse.R1.Flags != 0x00)
     {
         chipSelectControl(pSDHandle, HIGH);
-        return SD_READ_WRITE_FAIL;
+        return -EIO;
     }
 
     /***   Receive Block Read    ****/
@@ -1088,7 +1088,7 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
 
             // Set Fail flags
             pSDHandle->SD_CardState = SD_STATE_FAIL;
-            return SD_READ_WRITE_FAIL;
+            return (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED) ? -ETIMEDOUT : -EIO;
         }
     }
 
@@ -1111,10 +1111,10 @@ sd_read_write_t SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32
 
     if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
     {
-        return SD_READ_WRITE_FAIL;
+        return -ETIMEDOUT;
     }
 
-    return SD_READ_WRITE_SUCCESS;
+    return 0;
 }
 
 /**********************************************************************************************
