@@ -260,7 +260,7 @@ static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
 /***************************************************
  * 				Static Functions    			   *
  ***************************************************/
-static void getSystemInfo(FAT_Handle_t* pFAT);
+static int getSystemInfo(FAT_Handle_t* pFAT);
 static fat_types_t getFatType(FAT_Handle_t* pFAT);
 static uint32_t getFatAddrUnit(FAT_Handle_t* pFAT);
 
@@ -306,24 +306,23 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
  *
  * 	@note
  */
-fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
+int InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
 {
     // Link SD handler to FAT handler
     pFAT->pSDHandle = pSDHandle;
 
     // Init SD Card
-    SD_States_t status = SD_Init(pSDHandle);
+    int status = SD_Init(pSDHandle);
 
-    if (status != SD_STATE_READY)
+    if (status != 0)
     {
+        // SD_Init already returned negative errno
         pFAT->FAT_Stat = INIT_FAT_FAIL;
-        return pFAT->FAT_Stat;
+        return status;
     }
 
     // Read FAT system parameters from Boot sector
-    getSystemInfo(pFAT);
-
-    return pFAT->FAT_Stat;
+    return getSystemInfo(pFAT);
 }
 
 /****************************************************************************************
@@ -333,18 +332,12 @@ fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
  *
  * 	@param[pFAT]	 	 - Handler structure for FAT
  *
- * 	@return			     - none
+ * 	@return			     - 0 on success, negative errno on failure
  *
  * 	@note
  */
-static void getSystemInfo(FAT_Handle_t* pFAT)
+static int getSystemInfo(FAT_Handle_t* pFAT)
 {
-    if (SD_IsReady(pFAT->pSDHandle) == false)
-    {
-        pFAT->FAT_Stat = INIT_FAT_FAIL;
-        return;
-    }
-
     System_info_t* SystemInfo = &pFAT->SystemInfo;
     uint8_t* buff = SD_GetBuffAddr(pFAT->pSDHandle);
 
@@ -359,7 +352,7 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
         pFAT->FAT_Stat = INIT_CMD_FAIL;
-        return;
+        return -EIO;
     }
 
     /* First find the start of the the File system */
@@ -379,13 +372,13 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
     else
     {
         pFAT->FAT_Stat = INIT_NO_FAT;
-        return;
+        return -EINVAL;
     }
 
     if (ToLittleEndian(&buff[MBR_END_MARKER], DATA_SIZE_HALF_WORD) != BOOT_SIGNATURE)
     {
         pFAT->FAT_Stat = INIT_BAD_END_MARKER;
-        return;
+        return -EINVAL;
     }
 
     /******************	 Parse out parameters from Boot Block	 ****************/
@@ -407,7 +400,7 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
         pFAT->FAT_Stat = INIT_CMD_FAIL;
-        return;
+        return -EIO;
     }
 
     SystemInfo->BytesPerSector = ToLittleEndian(&buff[BOOT_BLK_BYTES_PER_SEC], DATA_SIZE_HALF_WORD);
@@ -443,7 +436,7 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
     if (cmdStatus == SD_READ_WRITE_FAIL)
     {
         pFAT->FAT_Stat = INIT_CMD_FAIL;
-        return;
+        return -EIO;
     }
 
     /* Instead we will get the volume label from the first in the root directory. This is a special item just for this. */
@@ -452,6 +445,7 @@ static void getSystemInfo(FAT_Handle_t* pFAT)
 
     /* Update the FAT Handler Status */
     pFAT->FAT_Stat = INIT_FAT_SUCCESS;
+    return 0;
 }
 
 /****************************************************************************************

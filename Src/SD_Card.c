@@ -9,6 +9,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include "stm32f4xx_dma_driver.h"
 #include "stm32f4xx_nvic_driver.h"
 
@@ -387,12 +388,12 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
  *
  * 	@note
  */
-SD_States_t SD_Init(SD_Handle_t* pSDHandle)
+int SD_Init(SD_Handle_t* pSDHandle)
 {
     if (pSDHandle->SD_Mode == SD_MODE_SDIO)
     {
         // not implemented
-        return SD_STATE_FAIL;
+        return -EIO;
     }
 
     // Configure SD buffer into
@@ -401,23 +402,20 @@ SD_States_t SD_Init(SD_Handle_t* pSDHandle)
     pSDHandle->bufferInfo.pCurrBuf = SD_BuffA;
     pSDHandle->bufferInfo.Size = SD_BUFFER_SIZE;
 
-    SD_States_t initState = SD_STATE_FAIL;
-
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
-        initState = SD_STATE_NO_CARD;
-    }
-    else if (InitSpi(pSDHandle) == INIT_SUCCESS)
-    {
-        initState = SD_STATE_READY;
-    }
-    else
-    {
-        initState = SD_STATE_FAIL;
+        pSDHandle->SD_CardState = SD_STATE_NO_CARD;
+        return -ENODEV;
     }
 
-    pSDHandle->SD_CardState = initState;
-    return initState;
+    if (InitSpi(pSDHandle) == INIT_SUCCESS)
+    {
+        pSDHandle->SD_CardState = SD_STATE_READY;
+        return 0;
+    }
+
+    pSDHandle->SD_CardState = SD_STATE_FAIL;
+    return -EIO;
 }
 
 static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)

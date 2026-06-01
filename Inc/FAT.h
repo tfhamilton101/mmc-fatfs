@@ -160,7 +160,7 @@ typedef struct
  ************************************************************************************/
 
 /* FAT Initialization Functions */
-fat_status_t InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
+int InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
 
 /* File Read / Write functions */
 int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
