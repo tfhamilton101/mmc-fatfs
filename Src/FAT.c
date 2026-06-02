@@ -176,15 +176,6 @@ typedef enum
 } fat_table_markers_t;
 
 
-// Fload Return type
-typedef enum
-{
-    FLOAD_FAIL = 0,
-    FLOAD_NOP,
-    FLOAD_EOF_NOT_FOUND,
-    FLOAD_EOF_FOUND,
-} fat_fload_t;
-
 /**********************************
  *      File search enums		  *
  **********************************/
@@ -261,8 +252,8 @@ static void removeSpacePadding(uint8_t* text, uint8_t fieldSize);
 static uint8_t parseFilename(char* FullName, uint8_t* Filename, uint8_t* FileExt);
 static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename);
 
-static fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
-static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
+static int loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode);
+static int loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster);
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
 static uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
@@ -1254,15 +1245,15 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
     }
 
     // Load Up the NodesQueue
-    fat_fload_t loadStatus = loadFileNodesQueue(pFAT, file, mode);
+    int loadStatus = loadFileNodesQueue(pFAT, file, mode);
 
-    // Return Types
-    if ((loadStatus == FLOAD_EOF_FOUND) || (loadStatus == FLOAD_EOF_NOT_FOUND))
+    // Return Types: 0 or 1 for success (EOF found or not found), negative errno on error
+    if (loadStatus >= 0)
     {
         return 0;
     }
 
-    return -EIO;
+    return loadStatus;
 }
 
 /****************************************************************************************
@@ -1273,10 +1264,10 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
  *  @param[pFAT]         - Handler structure for FAT
  *  @param[file]         - Memory location the file details
  *
- * 	@return			     - Search status
+ * 	@return			     - 0 on success, negative errno on error
  *
  */
-fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
+int loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
 {
     // Defining a local variable so the following statements are shorter.
     NodesQueue* pNodesQueue = &file->NodesQueue;
@@ -1285,7 +1276,7 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
     // TODO: Determine if this error handling needs updates
     if (isEndofFatEntry(pFAT, pNodesQueue->Tail) || isQueueFull(&pNodesQueue->Info) || (FAT_getStat(pFAT) != INIT_FAT_SUCCESS))
     {
-        return FLOAD_NOP;
+        return -EINVAL;
     }
 
     uint32_t currClusterID;
@@ -1300,7 +1291,7 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
             
             if (lastClusterID == 0)
             {
-                return FLOAD_FAIL;
+                return -EIO;
             }
             
             // Store the ending cluster for write operations
@@ -1331,14 +1322,19 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
         // Block Read Failure
         if (currClusterID == 0)
         {
-            return FLOAD_FAIL;
+            return -EIO;
         }
     }
 
     /**  Fwrite - Fill NodesQueue up with the next free ClusterIDs ***/
     if (mode == FILE_MODE_WRITE || mode == FILE_MODE_WRITE_NEW)
     {
-        return loadFreeClusterIDs(pFAT, pNodesQueue, currClusterID);
+        int floadStatus = loadFreeClusterIDs(pFAT, pNodesQueue, currClusterID);
+        if (floadStatus < 0)
+        {
+            return floadStatus;  // Pass through error
+        }
+        return 0;  // Success
     }
 
     /**  Read - Fill NodesQueue file ClusterIDs ***/
@@ -1349,16 +1345,16 @@ fat_fload_t loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode
 
     if (file->EndingCluster == 0)
     {
-        return FLOAD_FAIL;
+        return -EIO;
     }
 
     // Determine if EOF was reached by checking if pNodesQueue->Tail is an EOF marker
     if (isEndofFatEntry(pFAT, pNodesQueue->Tail))
     {
-        return FLOAD_EOF_FOUND;
+        return 0;  // EOF found
     }
 
-    return FLOAD_EOF_NOT_FOUND;
+    return 1;  // EOF not found
 }
 
 /****************************************************************************************
@@ -1511,13 +1507,13 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         // If the queue is empty but the EOF is not found, we need to reload the queue
         if (isQueueEmpty(&pNodesQueue->Info) && !isEndofFatEntry(pFAT, pNodesQueue->Tail))
         {
-            fat_fload_t loadStatus = loadFileNodesQueue(pFAT, file, FILE_MODE_READ);
+            int loadStatus = loadFileNodesQueue(pFAT, file, FILE_MODE_READ);
 
             // fload writes over the block buffer, so we need to re-read the current block.
             cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer);
 
             // Read Error Handling
-            if (cmdStatus < 0 || loadStatus == FLOAD_FAIL)
+            if (cmdStatus < 0 || loadStatus != 0)
             {
                 // Failure Could have while loading the queue.
                 while (!isQueueEmpty(&pNodesQueue->Info))
@@ -2160,11 +2156,11 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
  *  @param[pNodesQueue]   - Queue to hold file nodes
  *  @param[startCluster]  - Starting ClusterID
  *
- *  @return               - None  
+ *  @return               - 0 if queue full, negative errno on error
  *
  *  @note                 - 
  */
-static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster)
+static int loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster)
 {
     uint32_t currClusterID = startCluster;
 
@@ -2176,15 +2172,13 @@ static fat_fload_t loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueu
         // Block Read Failure
         if (currClusterID == 0)
         {
-            return FLOAD_FAIL;
+            return -EIO;
         }
-        else
-        {
-            enqueue(&pNodesQueue->Info, &currClusterID);
-        }
+
+        enqueue(&pNodesQueue->Info, &currClusterID);
     }
 
-    return FLOAD_EOF_FOUND;
+    return 0;  // Queue is full (EOF found)
 }
 
 /****************************************************************************************
