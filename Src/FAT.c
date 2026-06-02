@@ -189,15 +189,6 @@ typedef enum
  *      File search enums		  *
  **********************************/
 
-// Search status
-typedef enum
-{
-    FILESEARCH_FAIL = 0,
-    FILESEARCH_NOT_FOUND,
-    FILESEARCH_DIR_NOT_FOUND,
-    FILESEARCH_FOUND,
-} Search_Status_t;
-
 // Search Mode
 typedef enum
 {
@@ -287,9 +278,9 @@ static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 
 // Create new file
 static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
-static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
-static Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
-static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
+static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
+static int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
+static int searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
 static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 
 
@@ -685,10 +676,10 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
  * 	@param[file]		 - Memory location the file details
  * 	@param[mode]		 - search mode
  *
- * 	@return			     - Search status
+ * 	@return			     - 0 if found, negative errno on error
  *
  */
-static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr)
+static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr)
 {
     uint32_t addrQueueBuf[MAX_DIRECTORIES];
     uint16_t entriesPerDir = MAX_ENTIRES_PER_DIRECTORY;
@@ -727,7 +718,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
         if (cmdStatus < 0)
         {
             // Report Issue
-            return FILESEARCH_FAIL;
+            return -EIO;
         }
 
         // If we are in the root directory there is a limit to the number of entries
@@ -751,7 +742,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
             if (strcmp((char*)file->Filename, (char*)Filename) == 0 && strcmp((char*)file->FileExt, (char*)FileExt) == 0)
             {
                 // Found the file, so exit the function
-                return FILESEARCH_FOUND;
+                return 0;
             }
 
             // If we have found a new directory, add it to the queue
@@ -768,7 +759,7 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
     } while (!isQueueEmpty(&addrQueue));
 
     // Return file not found
-    return FILESEARCH_NOT_FOUND;
+    return -ENOENT;
 }
 
 /****************************************************************************************
@@ -781,25 +772,21 @@ static Search_Status_t findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entr
  * 	@param[file]		 - Memory location the file details
  * 	@param[mode]		 - Search mode
  *
- * 	@return			     - Search status
+ * 	@return			     - 0 if found, negative errno on error
  *
  */
-Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr)
+int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr)
 {
     // Search for file
-    Search_Status_t searchStatus = findFile(pFAT, fileName, file, mode, startAddr);
+    int searchStatus = findFile(pFAT, fileName, file, mode, startAddr);
 
-    if (searchStatus == FILESEARCH_FOUND && hasFileFlag(file, FILE_FLAG_DIRECTORY))
+    if (searchStatus == 0 && !hasFileFlag(file, FILE_FLAG_DIRECTORY))
     {
-        return FILESEARCH_FOUND;
+        // Found but not a directory
+        return -ENOTDIR;
     }
 
-    if (searchStatus == FILESEARCH_FAIL)
-    {
-        return FILESEARCH_FAIL;
-    }
-
-    return FILESEARCH_NOT_FOUND;
+    return searchStatus;
 }
 
 /****************************************************************************************
@@ -814,7 +801,7 @@ Search_Status_t findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_
  * 	@return	             - Search status
  *
  */
-static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file)
+static int searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file)
 {
     uint8_t n, delimeterLoc;
     uint8_t pathSegment[FILENAME_MAX_SIZE + 1];
@@ -857,15 +844,14 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
                 pathSegment[n - delimeterLoc] = '\0';
 
                 // Search for the directory segment starting from currSearchDir
-                if (findDirectory(pFAT, pathSegment, file, SEARCH_DIR_LOCAL, currSearchDir) == FILESEARCH_FOUND)
+                int dirResult = findDirectory(pFAT, pathSegment, file, SEARCH_DIR_LOCAL, currSearchDir);
+                if (dirResult != 0)
                 {
-                    // Descend into the found sub-directory
-                    currSearchDir = getClusterAddr(pFAT, file->StartingCluster);
+                    return dirResult;
                 }
-                else
-                {
-                    return FILESEARCH_DIR_NOT_FOUND;
-                }
+
+                // Descend into the found sub-directory
+                currSearchDir = getClusterAddr(pFAT, file->StartingCluster);
             }
 
             // Update delimiter location
@@ -881,13 +867,14 @@ static Search_Status_t searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_
         pathSegment[n - delimeterLoc] = '\0';
 
         // Search for the file starting from currSearchDir
-        if (findFile(pFAT, pathSegment, file, SEARCH_FILE_LOCAL, currSearchDir) != FILESEARCH_FOUND)
+        int fileResult = findFile(pFAT, pathSegment, file, SEARCH_FILE_LOCAL, currSearchDir);
+        if (fileResult != 0)
         {
-            return FILESEARCH_NOT_FOUND;
+            return fileResult;
         }
     }
 
-    return FILESEARCH_FOUND;
+    return 0;
 }
 
 /****************************************************************************************
@@ -930,8 +917,8 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 
     if (file->FileSize == ToLittleEndian(entryfileSize, FILE_SIZE_SIZE))
     {
-        // Nothing has changed
-        return -EINVAL;
+        // Nothing has changed - success with no operation
+        return 0;
     }
 
     ToEndianBuf(entryfileSize, file->FileSize, DATA_SIZE_WORD);
@@ -961,17 +948,19 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 {
     // Search for the file
-    Search_Status_t searchStat = searchPath(pFAT, fileName, file);
+    int searchStat = searchPath(pFAT, fileName, file);
 
-    // Report error if the file already exists or the directory does not
-    if (searchStat == FILESEARCH_FOUND)
+    // If file was found (searchStat == 0), it already exists
+    if (searchStat == 0)
     {
         return -EEXIST;
     }
     
-    if (searchStat == FILESEARCH_DIR_NOT_FOUND)
+    // If it's a legitimate "not found" error, we can proceed to create
+    // Otherwise pass through other errors (I/O errors, etc.)
+    if (searchStat != -ENOENT)
     {
-        return -ENOENT;
+        return searchStat;
     }
 
     /***********  Create a new entry in the FAT table  ***********/
@@ -1230,7 +1219,7 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
     }
 
     // Search for the file
-    if (searchPath(pFAT, path, file) != FILESEARCH_FOUND)
+    if (searchPath(pFAT, path, file) != 0)
     {
         return -ENOENT;
     }
