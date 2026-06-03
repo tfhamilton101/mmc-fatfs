@@ -155,18 +155,16 @@ void HexdumpBuffer(uint8_t* buf, uint32_t bufSize)
  *                     Sub Functions                       *
  ***********************************************************/
 
-dumpInfo_t FATdumpAddr(void* handle, uint32_t addr, uint32_t blocks)
+dumpInfo_t SdDumpAddr(void* handle, uint32_t addr, uint32_t blocks)
 {
     FAT_Handle_t* pFAT = (FAT_Handle_t*)handle;
-    dumpInfo_t info = {0};
-
-    // First Grab the dump info
-    info.blockSize = pFAT->SystemInfo.BytesPerSector;
-    info.buffSize = SD_GetBuffSize(pFAT->pSDHandle);
-    info.pbuff = SD_GetBuffAddr(pFAT->pSDHandle);
-
-    uint32_t addrUnit = (pFAT->SystemInfo.FAT_Type == FAT_TYPE_FAT16) ? pFAT->SystemInfo.BytesPerSector : 1;
-    info.addrUnit = (blocks == 0) ? addrUnit : addrUnit * blocks;
+    
+    dumpInfo_t info = {
+        .blockSize = 512,
+        .buffSize = SD_GetBuffSize(pFAT->pSDHandle),
+        .pbuff = SD_GetBuffAddr(pFAT->pSDHandle),
+        .addrUnit = (blocks == 0) ? 512 : 512 * blocks
+    };
 
     SD_ReadBlock(pFAT->pSDHandle, addr, blocks);
 

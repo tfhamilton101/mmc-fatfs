@@ -35,6 +35,6 @@ void Hexdump(void* pReadHandle, dumpInfo_t (*readBlock)(void*, uint32_t, uint32_
 void HexdumpBuffer(uint8_t* buf, uint32_t bufSize);
 
 // Sub Functions
-dumpInfo_t FATdumpAddr(void* handle, uint32_t addr, uint32_t blocks);
+dumpInfo_t SdDumpAddr(void* handle, uint32_t addr, uint32_t blocks);
 
 #endif /* INC_HEXDUMP_H_ */

@@ -125,14 +125,6 @@ typedef struct
     uint8_t VolumeLabel[VOLUME_LABEL_SIZE];
 } System_info_t;
 
-/*
- *  Structure for FAT Directory Stack
- */
-typedef struct
-{
-    uint32_t baseAddr;
-    uint8_t dirLabel[VOLUME_LABEL_SIZE];
-} FAT_Directory_t;
 
 /************************************************************************************
  *							FAT States												*
