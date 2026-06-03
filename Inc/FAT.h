@@ -84,7 +84,7 @@ typedef struct
     NodesQueue NodesQueue;
     uint32_t iterBaseAddr;
     uint32_t iterOffset;
-    file_entry_type_t entryType;
+    file_entry_type_t type;
 } file_entry_t;
 
 /*

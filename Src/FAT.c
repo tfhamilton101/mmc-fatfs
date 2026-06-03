@@ -617,19 +617,19 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
     if (attribute & FILE_FLAG_DIRECTORY)
     {
-        entry->entryType = ENTRY_TYPE_DIRECTORY;
+        entry->type = ENTRY_TYPE_DIRECTORY;
     }
     else if (attribute & FILE_FLAG_VOLUME)
     {
-        entry->entryType = ENTRY_TYPE_VOLUME;
+        entry->type = ENTRY_TYPE_VOLUME;
     }
     else if (attribute & (FILE_FLAG_SYSTEM | FILE_FLAG_HIDDEN))
     {
-        entry->entryType = ENTRY_TYPE_HIDDEN_FILE;
+        entry->type = ENTRY_TYPE_HIDDEN_FILE;
     }
     else
     {
-        entry->entryType = ENTRY_TYPE_FILE;
+        entry->type = ENTRY_TYPE_FILE;
     }
 
     // Get File Size
@@ -748,7 +748,7 @@ static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, S
             }
 
             // If we have found a new directory, add it to the queue
-            if (file->entryType == ENTRY_TYPE_DIRECTORY && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
+            if (file->type == ENTRY_TYPE_DIRECTORY && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
             {
                 tempAddr = getClusterAddr(pFAT, file->StartingCluster);
                 enqueue(&addrQueue, &tempAddr);
@@ -782,7 +782,7 @@ int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Sea
     // Search for file
     int searchStatus = findFile(pFAT, fileName, file, mode, startAddr);
 
-    if (searchStatus == 0 && file->entryType != ENTRY_TYPE_DIRECTORY)
+    if (searchStatus == 0 && file->type != ENTRY_TYPE_DIRECTORY)
     {
         // Found but not a directory
         return -ENOTDIR;
@@ -1243,8 +1243,8 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
     pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
 
     // Initialize directory scan state if this is a directory
-    if (file->entryType == ENTRY_TYPE_DIRECTORY
-        || file->entryType == ENTRY_TYPE_VOLUME)
+    if (file->type == ENTRY_TYPE_DIRECTORY
+        || file->type == ENTRY_TYPE_VOLUME)
     {
         file->iterBaseAddr = getClusterAddr(pFAT, file->StartingCluster);
         file->iterOffset = 0;
