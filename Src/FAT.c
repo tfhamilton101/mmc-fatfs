@@ -617,10 +617,7 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     /* Get File Attribute. This must be obtained again for the actual file
 	 * metadata because the previous one could have been for the LFN entry	*/
     entry->FileAttribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
-    // Get Time Created or Last Updated
-    entry->TimeModified = ToLittleEndian(entryAddr + currOffset + FILE_TIME_MODIFIED, FILE_TIME_MODIFIED_SIZE);
-    // Get Date Created or Last Updated
-    entry->DateModified = ToLittleEndian(entryAddr + currOffset + FILE_DATE_MODIFIED, FILE_DATE_MODIFIED_SIZE);
+
     // Get File Size
     entry->FileSize = ToLittleEndian(entryAddr + currOffset + FILE_SIZE, FILE_SIZE_SIZE);
 

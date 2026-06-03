@@ -67,11 +67,8 @@ typedef struct
     uint8_t Filename[FILENAME_MAX_SIZE + 1];
     uint8_t FileExt[FILE_EXT_LONG_SIZE + 1];
     uint8_t FileAttribute;
-    uint16_t TimeModified;
-    uint16_t DateModified;
     uint32_t StartingCluster;
     uint32_t EndingCluster;
-    uint32_t ParentCluster;
     uint32_t DirEntryBaseAddr;
     uint32_t DirEntryOffset;
     uint32_t FileSize;
