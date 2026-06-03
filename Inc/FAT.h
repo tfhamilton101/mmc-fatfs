@@ -59,6 +59,14 @@ typedef enum
     FILE_STATE_CLOSE,
 } file_state_t;
 
+typedef enum 
+{
+    ENTRY_TYPE_FILE,
+    ENTRY_TYPE_DIRECTORY,
+    ENTRY_TYPE_VOLUME,
+    ENTRY_TYPE_HIDDEN_FILE,
+} file_entry_type_t;
+
 /*
  *  Structure to hold file information
  */
@@ -66,7 +74,6 @@ typedef struct
 {
     uint8_t Filename[FILENAME_MAX_SIZE + 1];
     uint8_t FileExt[FILE_EXT_LONG_SIZE + 1];
-    uint8_t FileAttribute;
     uint32_t StartingCluster;
     uint32_t EndingCluster;
     uint32_t DirEntryBaseAddr;
@@ -77,6 +84,7 @@ typedef struct
     NodesQueue NodesQueue;
     uint32_t iterBaseAddr;
     uint32_t iterOffset;
+    file_entry_type_t entryType;
 } file_entry_t;
 
 /*
@@ -171,10 +179,6 @@ int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
 
 /* FAT Directory / File Searching Functions */
 int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);
-
-/* FAT File Attribute Functions */
-bool FAT_IsHiddenFile(file_entry_t* file);
-bool FAT_IsDirectory(file_entry_t* file);
 
 fat_status_t FAT_getStat(FAT_Handle_t* pFAT);
 

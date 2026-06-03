@@ -264,8 +264,6 @@ static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint3
 /* FAT Directory Functions */
 
 static bool isEndOfDir(file_entry_t* file);
-static bool isLongFile(file_entry_t* file);
-static bool hasFileFlag(file_entry_t* file, FAT_file_flags_t flag);
 
 // Create new file
 static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file);
@@ -273,7 +271,6 @@ static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, S
 static int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Search_Mode_t mode, uint32_t startAddr);
 static int searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
 static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
-
 
 
 /****************************************************************************************
@@ -485,10 +482,10 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     }
 
     // Get File Attribute
-    entry->FileAttribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
+    uint8_t attribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
 
     // Processing a short file name
-    if (!isLongFile(entry))
+    if (attribute != FILE_FLAG_LFN)
     {
         // Clear the file name incase of previous scans
         memset(entry->Filename, 0, FILENAME_SIZE + 1);
@@ -616,7 +613,24 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
     /* Get File Attribute. This must be obtained again for the actual file
 	 * metadata because the previous one could have been for the LFN entry	*/
-    entry->FileAttribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
+    attribute = *(entryAddr + currOffset + FILE_ATTRIBUTE);
+
+    if (attribute & FILE_FLAG_DIRECTORY)
+    {
+        entry->entryType = ENTRY_TYPE_DIRECTORY;
+    }
+    else if (attribute & FILE_FLAG_VOLUME)
+    {
+        entry->entryType = ENTRY_TYPE_VOLUME;
+    }
+    else if (attribute & (FILE_FLAG_SYSTEM | FILE_FLAG_HIDDEN))
+    {
+        entry->entryType = ENTRY_TYPE_HIDDEN_FILE;
+    }
+    else
+    {
+        entry->entryType = ENTRY_TYPE_FILE;
+    }
 
     // Get File Size
     entry->FileSize = ToLittleEndian(entryAddr + currOffset + FILE_SIZE, FILE_SIZE_SIZE);
@@ -734,7 +748,7 @@ static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, S
             }
 
             // If we have found a new directory, add it to the queue
-            if (hasFileFlag(file, FILE_FLAG_DIRECTORY) && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
+            if (file->entryType == ENTRY_TYPE_DIRECTORY && (mode == SEARCH_DIR_RECURSIVE || mode == SEARCH_FILE_RECURSIVE))
             {
                 tempAddr = getClusterAddr(pFAT, file->StartingCluster);
                 enqueue(&addrQueue, &tempAddr);
@@ -768,7 +782,7 @@ int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, Sea
     // Search for file
     int searchStatus = findFile(pFAT, fileName, file, mode, startAddr);
 
-    if (searchStatus == 0 && !hasFileFlag(file, FILE_FLAG_DIRECTORY))
+    if (searchStatus == 0 && file->entryType != ENTRY_TYPE_DIRECTORY)
     {
         // Found but not a directory
         return -ENOTDIR;
@@ -1229,7 +1243,8 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
     pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
 
     // Initialize directory scan state if this is a directory
-    if (FAT_IsDirectory(file) || hasFileFlag(file, FILE_FLAG_VOLUME))
+    if (file->entryType == ENTRY_TYPE_DIRECTORY
+        || file->entryType == ENTRY_TYPE_VOLUME)
     {
         file->iterBaseAddr = getClusterAddr(pFAT, file->StartingCluster);
         file->iterOffset = 0;
@@ -1739,52 +1754,6 @@ uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID)
 }
 
 /****************************************************************************************
- *	@fn 			     - hasFileFlag
- *
- * 	@brief			     - Get status flags from the file attribute byte
- *
- * 	@param[file]	     - Memory location of file structure
- * 	@param[flag]	     - Flag to check for
- *
- * 	@return			     - True or False
- *
- */
-static bool hasFileFlag(file_entry_t *file, FAT_file_flags_t flag)
-{
-    return file->FileAttribute & flag;
-}
-
-/****************************************************************************************
- *	@fn 			     - isHiddenFile
- *
- * 	@brief			     - Determine whether file is valid
- *
- * 	@param[file]	     - Memory location of file structure
- *
- * 	@return			     - True or False
- *
- */
-bool FAT_IsHiddenFile(file_entry_t* file)
-{
-    return hasFileFlag(file, FILE_FLAG_VOLUME | FILE_FLAG_SYSTEM | FILE_FLAG_HIDDEN);
-}
-
-/****************************************************************************************
- *	@fn 			     - FAT_IsDirectory
- *
- * 	@brief			     - Determine whether file is a directory
- *
- * 	@param[file]	     - Memory location of file structure
- *
- * 	@return			     - True or False
- *
- */
-bool FAT_IsDirectory(file_entry_t *file)
-{
-    return hasFileFlag(file, FILE_FLAG_DIRECTORY);
-}
-
-/****************************************************************************************
  *  @fn                  - isEndOfDir
  *
  *  @brief               - Determine whether file is valid
@@ -1799,20 +1768,6 @@ static bool isEndOfDir(file_entry_t* file)
     return file->Filename[0] == END_OF_DIRECTORY;
 }
 
-/****************************************************************************************
- *	@fn 			     - isLongFile
- *
- * 	@brief			     - Determine whether file is valid
- *
- * 	@param[file]	     - Memory location of file structure
- *
- * 	@return			     - True or False
- *
- */
-static bool isLongFile(file_entry_t* file)
-{
-    return file->FileAttribute == FILE_FLAG_LFN;
-}
 
 /****************************************************************************************
  *	@fn 			     - removeSpacePadding
