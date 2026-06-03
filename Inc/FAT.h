@@ -21,21 +21,11 @@
 // Maximum number of entries this driver supports. (Max LFN is 52 characters)
 #define MAX_LFN_ENTRIES 4
 
-typedef enum
-{
-    FILENAME_SIZE = 8,
-    FILENAME_LF_SIZE = 13,
-    FILENAME_MAX_SIZE = (FILENAME_LF_SIZE * MAX_LFN_ENTRIES),
-    FILE_EXT_SHORT_SIZE = 3,
-    FILE_EXT_LONG_SIZE = 4,
-    FILE_FULL_SIZE = FILENAME_SIZE + FILE_EXT_SHORT_SIZE + 1,
-    FILE_ATTRIBUTE_SIZE = 1,
-    FILE_TIME_MODIFIED_SIZE = 2,
-    FILE_DATE_MODIFIED_SIZE = 2,
-    FILE_START_CLUSTER_SIZE = 2,
-    FILE_SIZE_SIZE = 4
-} FAT_file_entry_size_t;
-
+#define FILENAME_SIZE 8
+#define FILENAME_LF_SIZE 13
+#define FILENAME_MAX_SIZE (FILENAME_LF_SIZE * MAX_LFN_ENTRIES)
+#define FILE_EXT_SHORT_SIZE 3
+#define FILE_EXT_LONG_SIZE 4
 
 typedef struct
 {
@@ -87,45 +77,6 @@ typedef struct
     file_entry_type_t type;
 } file_entry_t;
 
-/*
- *  Structure for System information
- */
-#define VOLUME_LABEL_SIZE 11
-
-/************************************************************************************
- *							 FAT Macros										        *
- ************************************************************************************/
-
-/*
- *  @FAT_type
- *  Possible Modes for SD Communication
- */
-typedef enum
-{
-    FAT_TYPE_FAT16 = 0,
-    FAT_TYPE_FAT32,
-} fat_types_t;
-
-/*
- *  System Info Structure
- */
-typedef struct
-{
-    fat_types_t FAT_Type;
-    uint32_t FAT_Copies;
-    uint32_t SectorsPerCluster;
-    uint32_t BytesPerSector;
-    uint32_t SectorsPerFAT;
-    uint32_t RootDirEntries;
-    uint32_t RootDirAddress;
-    uint32_t FAT1_Address;
-    uint32_t FAT2_Address;
-    uint32_t DataStartAddress;
-    uint32_t SectorsPerVolume;
-    uint8_t VolumeLabel[VOLUME_LABEL_SIZE];
-} System_info_t;
-
-
 /************************************************************************************
  *							FAT States												*
  ************************************************************************************/
@@ -141,6 +92,9 @@ typedef enum
     INIT_FAT_SUCCESS,
 } fat_status_t;
 
+// Forward declaration only - hide the struct definition
+typedef struct System_info_t System_info_t;
+
 /**************************************************
  *           Handle structure for FAT             *
  **************************************************/
@@ -148,7 +102,7 @@ typedef struct
 {
     fat_status_t FAT_Stat;
     SD_Handle_t* pSDHandle;
-    System_info_t SystemInfo;
+    System_info_t* SystemInfo;
 } FAT_Handle_t;
 
 /************************************************************************************
