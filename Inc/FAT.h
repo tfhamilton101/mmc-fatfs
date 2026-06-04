@@ -10,9 +10,7 @@
 
 // Standard Libraries
 #include <stdint.h>
-#include "SD_Card.h"
 #include "Queue.h"
-
 
 /**********************************
  *    Directory File Macros 	  *
@@ -92,8 +90,9 @@ typedef enum
     INIT_FAT_SUCCESS,
 } fat_status_t;
 
-// Forward declaration only - hide the struct definition
+// Forward declarations only - hide the struct definitions
 typedef struct System_info_t System_info_t;
+struct SD_Handle_t;
 
 /**************************************************
  *           Handle structure for FAT             *
@@ -101,7 +100,7 @@ typedef struct System_info_t System_info_t;
 typedef struct
 {
     fat_status_t FAT_Stat;
-    SD_Handle_t* pSDHandle;
+    struct SD_Handle_t* pSDHandle;
     System_info_t* SystemInfo;
 } FAT_Handle_t;
 
@@ -111,7 +110,7 @@ typedef struct
  ************************************************************************************/
 
 /* FAT Initialization Functions */
-int InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle);
+int InitFAT(FAT_Handle_t* pFAT, struct SD_Handle_t* pSDHandle);
 
 /* File Read / Write functions */
 int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);

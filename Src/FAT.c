@@ -6,6 +6,7 @@
  ****************************************/
 
 #include "FAT.h"
+#include "SD_Card.h"
 #include <errno.h>
 #include "stm32f4xx_dma_driver.h"
 #include "Stack.h"
@@ -330,7 +331,7 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
  *
  * 	@note
  */
-int InitFAT(FAT_Handle_t* pFAT, SD_Handle_t* pSDHandle)
+int InitFAT(FAT_Handle_t* pFAT, struct SD_Handle_t* pSDHandle)
 {
     // Link SD handler to FAT handler
     pFAT->pSDHandle = pSDHandle;

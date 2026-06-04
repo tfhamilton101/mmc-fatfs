@@ -92,7 +92,7 @@ typedef struct
 /*
  *  Configuration structure for SD Card
  */
-typedef struct
+typedef struct SD_Handle_t
 {
     sd_mode_t SD_Mode;                /*!  < possible values from @SD_mode>          */
     sd_crc_modes_t SD_CRCEn;          /*!  < possible values from @SD_CRCEn>         */
