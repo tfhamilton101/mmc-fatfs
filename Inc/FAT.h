@@ -55,6 +55,17 @@ typedef enum
     ENTRY_TYPE_HIDDEN_FILE,
 } file_entry_type_t;
 
+struct file_info_t
+{
+    uint32_t StartingCluster;
+    uint32_t EndingCluster;
+    uint32_t DirEntryBaseAddr;
+    uint32_t DirEntryOffset;
+    NodesQueue NodesQueue;
+    uint32_t iterBaseAddr;
+    uint32_t iterOffset;
+};
+
 /*
  *  Structure to hold file information
  */
@@ -62,17 +73,11 @@ typedef struct
 {
     uint8_t Filename[FILENAME_MAX_SIZE + 1];
     uint8_t FileExt[FILE_EXT_LONG_SIZE + 1];
-    uint32_t StartingCluster;
-    uint32_t EndingCluster;
-    uint32_t DirEntryBaseAddr;
-    uint32_t DirEntryOffset;
     uint32_t FileSize;
     file_mode_t mode;
-    file_state_t state;
-    NodesQueue NodesQueue;
-    uint32_t iterBaseAddr;
-    uint32_t iterOffset;
     file_entry_type_t type;
+    file_state_t state;
+    struct file_info_t info;
 } file_entry_t;
 
 /************************************************************************************
