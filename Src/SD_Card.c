@@ -8,6 +8,7 @@
 #include "SD_Card.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <errno.h>
 #include "stm32f4xx_dma_driver.h"
 #include "stm32f4xx_nvic_driver.h"
@@ -1210,22 +1211,6 @@ static void timeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi)
     {
         TIM_PeripheralControl(sdTIM, DISABLE);
     }
-}
-
-/****************************************************************************************
- *	@fn 			     - SD_IsReady
- *
- * 	@brief			     - Function to set read block of data
- *
- * 	@param[pSDHandle]	 - Handler structure for SD Card
- *
- * 	@return			     - True or False
- *
- * 	@note				 -
- */
-bool SD_IsReady(SD_Handle_t* pSDHandle)
-{
-    return (SD_GetState(pSDHandle) == SD_STATE_READY);
 }
 
 /****************************************************************************************

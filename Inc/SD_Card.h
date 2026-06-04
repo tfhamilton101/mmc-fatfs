@@ -9,7 +9,6 @@
 #define INC_SD_CARD_H_
 
 // Standard Libraries
-#include <stdbool.h>
 #include <stdint.h>
 #include "stm32f4xx_gpio_driver.h"
 #include "stm32f4xx_spi_driver.h"
@@ -113,15 +112,6 @@ typedef struct
 #define SD_DEFAULT_BLOCK_SIZE (512)
 
 /************************************************************************************
- *                              SD Hardware Type
- *************************************************************************************/
-typedef enum
-{
-    SD_HARDWARE_SPI = 0,
-    SD_HARDWARE_SDIO,
-} sd_hardware_type_t;
-
-/************************************************************************************
  *                              Public Functions
  *************************************************************************************/
 
@@ -139,7 +129,6 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCoun
 
 /* Helper function */
 SD_States_t SD_GetState(SD_Handle_t* pSDHandle);
-bool SD_IsReady(SD_Handle_t* pSDHandle);
 uint8_t* SD_GetBuffAddr(SD_Handle_t* pSDHandle);
 uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle);
 void SD_ToggleCurrBuff(SD_Handle_t* pSDHandle);
