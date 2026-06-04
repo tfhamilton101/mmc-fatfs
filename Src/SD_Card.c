@@ -6,7 +6,6 @@
  */
 
 #include "SD_Card.h"
-
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -43,6 +42,18 @@
  */
 #define SD_DMA_THRESHOLD 32
 
+/************************************************************************************
+ *                              SD Timers Definitions
+ *************************************************************************************/
+
+/*
+ * Set prescaler for the Command delay
+ * Prescaler = 1 * ( 250ms ) * ( 40MHz ) / 65535 = 
+ *
+ * Note: When TIMPRE bit of the RCC_DCKCFGR register is reset, if APBx prescaler is 1 (RCC_APBx_AHB_DIV_NONE),
+ *       then TIMxCLK = PCLKx, otherwise TIMxCLK = 2x PCLKx. See clock tree for more details.
+ */
+#define SD_TIMEOUT_PRESCALE 152
 
 /************************************************************************* 
  *                         SD Command Typedefs                           * 
@@ -125,8 +136,8 @@ typedef enum
 /* Bit Definitions for SD Command */
 typedef enum
 {
-    TRAN_BIT = BIT6,
-    STOP_BIT = BIT0,
+    TRAN_BIT = (1 << 6),
+    STOP_BIT = (1 << 0),
 } command_frame_bits_t;
 
 /************************************************************************************
@@ -253,6 +264,14 @@ typedef enum
     INIT_SUCCESS,
 } SD_Init_States_t;
 
+/************************************************************************************
+ *			        		SD Card Detection
+ *************************************************************************************/
+typedef enum
+{
+    CD_REMOVED,
+    CD_DETECTED,
+} card_detect_t;
 
 //-----------   Private function declarations    -----------//
 static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle);
@@ -280,6 +299,8 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 
+/* I/O Functions */
+static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle);
 
 /*** Private Variables ***/
 // RX Buffer for SD Reads
@@ -1299,7 +1320,7 @@ static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
  *
  *  @note              - 
  */
-card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
+static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
 {
     GPIO_Handle_t cd = pSDHandle->CardDetHandle;
 

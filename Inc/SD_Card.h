@@ -11,7 +11,6 @@
 // Standard Libraries
 #include <stdbool.h>
 #include <stdint.h>
-#include "Utils.h"
 #include "stm32f4xx_gpio_driver.h"
 #include "stm32f4xx_spi_driver.h"
 #include "stm32f4xx_timer_driver.h"
@@ -64,7 +63,6 @@ typedef enum
     SD_TRANSFER_DMA,
 } sd_trans_modes_t;
 
-
 /*
  * @bufferInfo_t
  * Buffer Related Variables
@@ -93,16 +91,6 @@ typedef struct
 } Timeout_t;
 
 /*
- * SD DMA Streams
- */
-typedef enum
-{
-    SD_DMA_STREAM_WRITE = 0,
-    SD_DMA_STREAM_READ,
-    SD_DMA_CHANNELS,
-} sd_dma_streams_t;
-
-/*
  *  Configuration structure for SD Card
  */
 typedef struct
@@ -119,21 +107,10 @@ typedef struct
     Timeout_t cmdTimeout;             /*   Timer Handler for Command Timeouts        */
 } SD_Handle_t;
 
-
-
 /************************************************************************************
  *                          SD block size Definitions
  *************************************************************************************/
 #define SD_DEFAULT_BLOCK_SIZE (512)
-
-/************************************************************************************
- *			        		SD Card Detection
- *************************************************************************************/
-typedef enum
-{
-    CD_REMOVED,
-    CD_DETECTED,
-} card_detect_t;
 
 /************************************************************************************
  *                              SD Hardware Type
@@ -143,19 +120,6 @@ typedef enum
     SD_HARDWARE_SPI = 0,
     SD_HARDWARE_SDIO,
 } sd_hardware_type_t;
-
-/************************************************************************************
- *                              SD Timers Definitions
- *************************************************************************************/
-
-/*
- * Set prescaler for the Command delay
- * Prescaler = 1 * ( 250ms ) * ( 40MHz ) / 65535 = 
- *
- * Note: When TIMPRE bit of the RCC_DCKCFGR register is reset, if APBx prescaler is 1 (RCC_APBx_AHB_DIV_NONE),
- *       then TIMxCLK = PCLKx, otherwise TIMxCLK = 2x PCLKx. See clock tree for more details.
- */
-#define SD_TIMEOUT_PRESCALE 152
 
 /************************************************************************************
  *                              Public Functions
@@ -179,10 +143,6 @@ bool SD_IsReady(SD_Handle_t* pSDHandle);
 uint8_t* SD_GetBuffAddr(SD_Handle_t* pSDHandle);
 uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle);
 void SD_ToggleCurrBuff(SD_Handle_t* pSDHandle);
-
-/* I/O Functions */
-// TODO: Consider making this static
-card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle);
 
 /* IRQ Functions */
 void SD_IRQHandling(SD_Handle_t* pSDHandle);
