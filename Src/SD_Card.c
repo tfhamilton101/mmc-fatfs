@@ -324,14 +324,14 @@ static uint8_t SD_BuffB[SD_BUFFER_SIZE];
  */
 void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma)
 {
-    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    if (pSDHandle->mode == SD_MODE_SDIO)
     {
         // TODO: Write SDIO drivers
         return;
     }
 
     // Note: SD initialization must run at 100-400kHz
-    SPI_Handle_t* SPIx_handle = &pSDHandle->SPIHandle;
+    SPI_Handle_t* SPIx_handle = &pSDHandle->SPI;
 
     SPIx_handle->pSPIx = pSPIx;
     SPIx_handle->SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
@@ -343,7 +343,7 @@ void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t*
     SPIx_handle->SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
     SPIx_handle->SPIConfig.SPI_SSM = SPI_SSM_EN;
 
-    if (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA)
+    if (pSDHandle->transferMode == SD_TRANSFER_NON_DMA)
     {
         SPIx_handle->DMAConfig.RxBufDmaConfig = DISABLE;
         SPIx_handle->DMAConfig.TxBufDmaConfig = DISABLE;
@@ -422,7 +422,7 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
  */
 int SD_Init(SD_Handle_t* pSDHandle)
 {
-    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    if (pSDHandle->mode == SD_MODE_SDIO)
     {
         // not implemented
         return -EIO;
@@ -436,23 +436,23 @@ int SD_Init(SD_Handle_t* pSDHandle)
 
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
-        pSDHandle->SD_CardState = SD_STATE_NO_CARD;
+        pSDHandle->CardState = SD_STATE_NO_CARD;
         return -ENODEV;
     }
 
     if (InitSpi(pSDHandle) == INIT_SUCCESS)
     {
-        pSDHandle->SD_CardState = SD_STATE_READY;
+        pSDHandle->CardState = SD_STATE_READY;
         return 0;
     }
 
-    pSDHandle->SD_CardState = SD_STATE_FAIL;
+    pSDHandle->CardState = SD_STATE_FAIL;
     return -EIO;
 }
 
 static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 {
-    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    if (pSDHandle->mode == SD_MODE_SDIO)
     {
         // not implemented 
         return;
@@ -463,36 +463,36 @@ static void sendData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     //   2. DMA not globally configured
     //   3. Buffer not 4-byte aligned (DMA requirement for STM32F4)
     bool useManual = (len < SD_DMA_THRESHOLD) ||
-                     (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA) ||
+                     (pSDHandle->transferMode == SD_TRANSFER_NON_DMA) ||
                      (((uintptr_t)pData & 0x3) != 0);
 
     if (useManual)
     {
-        SPI_SendData(pSDHandle->SPIHandle.pSPIx, pData, len);
+        SPI_SendData(pSDHandle->SPI.pSPIx, pData, len);
     }
     else
     {
-        SPI_SendDataDma(&pSDHandle->SPIHandle, pData, len);
+        SPI_SendDataDma(&pSDHandle->SPI, pData, len);
 
-        SPI_CompleteDmaTransfer(&pSDHandle->SPIHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
+        SPI_CompleteDmaTransfer(&pSDHandle->SPI, pSDHandle->SPI.DMAConfig.pTxStream);
     }
 }
 
 static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 {
-    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    if (pSDHandle->mode == SD_MODE_SDIO)
     {
         // not implemented 
         return;
     }
 
     // Both DMA and non-DMA receive can use the polling method
-    SPI_ReceiveData(pSDHandle->SPIHandle.pSPIx, pData, len);
+    SPI_ReceiveData(pSDHandle->SPI.pSPIx, pData, len);
 }
 
 static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 {
-    if (pSDHandle->SD_Mode == SD_MODE_SDIO)
+    if (pSDHandle->mode == SD_MODE_SDIO)
     {
         // not implemented 
         return;
@@ -503,20 +503,20 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
     //   2. DMA not globally configured
     //   3. Buffer not 4-byte aligned (DMA requirement for STM32F4)
     bool useManual = (len < SD_DMA_THRESHOLD) ||
-                     (pSDHandle->SD_TransferMode == SD_TRANSFER_NON_DMA) ||
+                     (pSDHandle->transferMode == SD_TRANSFER_NON_DMA) ||
                      (((uintptr_t)pData & 0x3) != 0);
 
     if (useManual)
     {
-        SPI_MasterTransfer(pSDHandle->SPIHandle.pSPIx, pData, len);
+        SPI_MasterTransfer(pSDHandle->SPI.pSPIx, pData, len);
     }
     else
     {
-        SPI_MasterTransferDma(&pSDHandle->SPIHandle, pData, len);
+        SPI_MasterTransferDma(&pSDHandle->SPI, pData, len);
 
         
-        SPI_CompleteDmaTransfer(&pSDHandle->SPIHandle, pSDHandle->SPIHandle.DMAConfig.pTxStream);
-        SPI_CompleteDmaTransfer(&pSDHandle->SPIHandle, pSDHandle->SPIHandle.DMAConfig.pRxStream);
+        SPI_CompleteDmaTransfer(&pSDHandle->SPI, pSDHandle->SPI.DMAConfig.pTxStream);
+        SPI_CompleteDmaTransfer(&pSDHandle->SPI, pSDHandle->SPI.DMAConfig.pRxStream);
     }
 }
 
@@ -536,10 +536,10 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
     Command_Response_t CmdResponse = {0};
 
     // Reduce SPI Clock frequency incase this is an re-init
-    SPI_UpdateClockFreq(pSDHandle->SPIHandle.pSPIx, 400000);
+    SPI_UpdateClockFreq(pSDHandle->SPI.pSPIx, 400000);
 
     // Enable the SPI Peripheral
-    SPI_PeripheralControl(pSDHandle->SPIHandle.pSPIx, ENABLE);
+    SPI_PeripheralControl(pSDHandle->SPI.pSPIx, ENABLE);
 
     /*********      Send Power Sequence    ********/
     runPowerSequence(pSDHandle);
@@ -605,7 +605,7 @@ static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
     chipSelectControl(pSDHandle, HIGH);
 
     // Update SPI Clock frequency for higher performance
-    SPI_UpdateClockFreq(pSDHandle->SPIHandle.pSPIx, 50000000);
+    SPI_UpdateClockFreq(pSDHandle->SPI.pSPIx, 50000000);
     
     return INIT_SUCCESS;
 }
@@ -674,7 +674,7 @@ static Command_Response_t SendCommand(SD_Handle_t* pSDHandle, sd_cmd_ID_t cmdID,
     // Error Handling
     if (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED)
     {
-        pSDHandle->SD_CardState = SD_STATE_FAIL;
+        pSDHandle->CardState = SD_STATE_FAIL;
     }
 
     return CmdResponse;
@@ -728,7 +728,7 @@ static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Form
     uint8_t* ResponsePtr = CmdResponse;
 
     // Wait until SPI peripheral is not busy
-    while (SPI_GetFlagStatus(pSDHandle->SPIHandle.pSPIx, SPI_FLAG_BSY))
+    while (SPI_GetFlagStatus(pSDHandle->SPI.pSPIx, SPI_FLAG_BSY))
     {
     }
 
@@ -1017,7 +1017,7 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount
             chipSelectControl(pSDHandle, HIGH);
 
             // Set Fail flags
-            pSDHandle->SD_CardState = SD_STATE_FAIL;
+            pSDHandle->CardState = SD_STATE_FAIL;
             return -ETIMEDOUT;
         }
 
@@ -1119,7 +1119,7 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCoun
             chipSelectControl(pSDHandle, HIGH);
 
             // Set Fail flags
-            pSDHandle->SD_CardState = SD_STATE_FAIL;
+            pSDHandle->CardState = SD_STATE_FAIL;
             return (getTimeoutStatus(pSDHandle) == TIMEOUT_EXPIRED) ? -ETIMEDOUT : -EIO;
         }
     }
@@ -1160,13 +1160,13 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCoun
  *
  *  @param[pSDHandle]  -  Handler structure for SD Card
  *
- *  @return            -  CSD_CardState
+ *  @return            -  CCardState
  *
  *  @note              - 
  */
 SD_States_t SD_GetState(SD_Handle_t* pSDHandle)
 {
-    return pSDHandle->SD_CardState;
+    return pSDHandle->CardState;
 }
 
 /****************************************************************************************
@@ -1176,7 +1176,7 @@ SD_States_t SD_GetState(SD_Handle_t* pSDHandle)
  *
  *  @param[pSDHandle]  - Handler structure for SD Card
  *
- *  @return            - CSD_CardState
+ *  @return            - CCardState
  *
  *  @note              - TIMEOUT_NON_EXPIRED or TIMEOUT_EXPIRED
  */
@@ -1284,10 +1284,10 @@ uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle)
  */
 static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
 {
-    GPIO_Handle_t cs = pSDHandle->ChipSelHandle;
+    GPIO_Handle_t cs = pSDHandle->chipSelect;
 
     // Wait until SPI peripheral is not busy
-    while (SPI_GetFlagStatus(pSDHandle->SPIHandle.pSPIx, SPI_FLAG_BSY) == FLAG_SET)
+    while (SPI_GetFlagStatus(pSDHandle->SPI.pSPIx, SPI_FLAG_BSY) == FLAG_SET)
     {
     }
 
@@ -1307,10 +1307,10 @@ static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
  */
 static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
 {
-    GPIO_Handle_t cd = pSDHandle->CardDetHandle;
+    GPIO_Handle_t cd = pSDHandle->cardDetect;
 
     // Active High Switch
-    if (GPIO_ReadFromInputPin(cd.pGPIOx, cd.GPIO_PinConfig.GPIO_PinNumber) == pSDHandle->CardDetPol)
+    if (GPIO_ReadFromInputPin(cd.pGPIOx, cd.GPIO_PinConfig.GPIO_PinNumber) == pSDHandle->cardDetPol)
     {
         return CD_DETECTED;
     }
@@ -1337,6 +1337,6 @@ void SD_IRQHandling(SD_Handle_t* pSDHandle)
 {
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
-        pSDHandle->SD_CardState = SD_STATE_NO_CARD;
+        pSDHandle->CardState = SD_STATE_NO_CARD;
     }
 }

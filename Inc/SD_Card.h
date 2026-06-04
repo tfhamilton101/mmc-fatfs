@@ -33,7 +33,7 @@ typedef enum
 } SD_States_t;
 
 /*
- *  @SD_mode
+ *  @mode
  *  Possible Modes for SD Communication
  */
 typedef enum
@@ -43,7 +43,7 @@ typedef enum
 } sd_mode_t;
 
 /*
- *  @SD_CRCEn
+ *  @crcEn
  *  Possible Modes for SD Communication
  */
 typedef enum
@@ -53,7 +53,7 @@ typedef enum
 } sd_crc_modes_t;
 
 /*
- *  @SD_TransferMode
+ *  @transferMode
  *  Possible Modes for SD Communication
  */
 typedef enum
@@ -94,16 +94,16 @@ typedef struct
  */
 typedef struct SD_Handle_t
 {
-    sd_mode_t SD_Mode;                /*!  < possible values from @SD_mode>          */
-    sd_crc_modes_t SD_CRCEn;          /*!  < possible values from @SD_CRCEn>         */
-    SD_States_t SD_CardState;         /*!  < possible values from @SD_CardState>     */
-    sd_trans_modes_t SD_TransferMode; /*   < possible values from @SD_TransferMode   */
-    bufferInfo_t bufferInfo;          /*   Buffer Info Structure                     */
-    SPI_Handle_t SPIHandle;           /*   SPI Handle Structure                      */
-    GPIO_Handle_t ChipSelHandle;      /*   Handler Chip select GPIOx                 */
-    GPIO_Handle_t CardDetHandle;      /*   Handler Card Detect GPIOx                 */
-    gpio_pin_state_t CardDetPol;      /*   SD Card detect polarity                   */
-    Timeout_t cmdTimeout;             /*   Timer Handler for Command Timeouts        */
+    sd_mode_t mode;                /*!  < possible values from @mode>          */
+    sd_crc_modes_t crcEn;          /*!  < possible values from @crcEn>         */
+    SD_States_t CardState;         /*!  < possible values from @CardState>     */
+    sd_trans_modes_t transferMode; /*   < possible values from @transferMode   */
+    bufferInfo_t bufferInfo;       /*   Buffer Info Structure                     */
+    SPI_Handle_t SPI;              /*   SPI Handle Structure                      */
+    GPIO_Handle_t chipSelect;      /*   Handler Chip select GPIOx                 */
+    GPIO_Handle_t cardDetect;      /*   Handler Card Detect GPIOx                 */
+    gpio_pin_state_t cardDetPol;   /*   SD Card detect polarity                   */
+    Timeout_t cmdTimeout;          /*   Timer Handler for Command Timeouts        */
 } SD_Handle_t;
 
 /************************************************************************************
