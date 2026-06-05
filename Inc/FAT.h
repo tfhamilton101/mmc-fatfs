@@ -10,7 +10,7 @@
 
 // Standard Libraries
 #include <stdint.h>
-#include "Queue.h"
+#include <stdbool.h>
 
 /**********************************
  *    Directory File Macros 	  *
@@ -24,12 +24,6 @@
 #define FILENAME_MAX_SIZE (FILENAME_LF_SIZE * MAX_LFN_ENTRIES)
 #define FILE_EXT_SHORT_SIZE 3
 #define FILE_EXT_LONG_SIZE 4
-
-typedef struct
-{
-    QueueInfo Info;
-    uint32_t Tail;
-} NodesQueue;
 
 typedef enum
 {
@@ -55,16 +49,8 @@ typedef enum
     ENTRY_TYPE_HIDDEN_FILE,
 } file_entry_type_t;
 
-struct file_context_t
-{
-    uint32_t StartingCluster;
-    uint32_t EndingCluster;
-    uint32_t DirEntryBaseAddr;
-    uint32_t DirEntryOffset;
-    NodesQueue NodesQueue;
-    uint32_t iterBaseAddr;
-    uint32_t iterOffset;
-};
+// Forward declaration only 
+struct file_context_t;
 
 /*s
  *  Structure to hold file information
@@ -77,7 +63,7 @@ typedef struct
     file_mode_t mode;
     file_entry_type_t type;
     file_state_t state;
-    struct file_context_t context;
+    struct file_context_t* context;
 } file_entry_t;
 
 /************************************************************************************
