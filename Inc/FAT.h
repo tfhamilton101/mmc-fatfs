@@ -55,7 +55,7 @@ typedef enum
     ENTRY_TYPE_HIDDEN_FILE,
 } file_entry_type_t;
 
-struct file_info_t
+struct file_context_t
 {
     uint32_t StartingCluster;
     uint32_t EndingCluster;
@@ -66,7 +66,7 @@ struct file_info_t
     uint32_t iterOffset;
 };
 
-/*
+/*s
  *  Structure to hold file information
  */
 typedef struct
@@ -77,7 +77,7 @@ typedef struct
     file_mode_t mode;
     file_entry_type_t type;
     file_state_t state;
-    struct file_info_t info;
+    struct file_context_t context;
 } file_entry_t;
 
 /************************************************************************************
