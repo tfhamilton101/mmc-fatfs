@@ -556,15 +556,15 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     if (attribute != FILE_FLAG_LFN)
     {
         // Clear the file name incase of previous scans
-        memset(entry->Filename, 0, FILENAME_SIZE + 1);
+        memset(entry->name, 0, FILENAME_SIZE + 1);
 
         // Copy in Filename
-        strncpy((char*)entry->Filename, (char*)(entryAddr + currOffset + FILENAME), FILENAME_SIZE);
-        removeSpacePadding(entry->Filename, FILENAME_SIZE);
+        strncpy((char*)entry->name, (char*)(entryAddr + currOffset + FILENAME), FILENAME_SIZE);
+        removeSpacePadding(entry->name, FILENAME_SIZE);
 
         // Copy in File Extension
-        strncpylower(entry->FileExt, (entryAddr + currOffset + FILE_EXTENSION), FILE_EXT_SHORT_SIZE);
-        removeSpacePadding(entry->FileExt, FILE_EXT_SHORT_SIZE);
+        strncpylower(entry->ext, (entryAddr + currOffset + FILE_EXTENSION), FILE_EXT_SHORT_SIZE);
+        removeSpacePadding(entry->ext, FILE_EXT_SHORT_SIZE);
     }
     // Otherwise we need to process a long file name (VFAT)
     else
@@ -638,20 +638,20 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
         }
 
         // Terminate the first character so the string functions work properly
-        entry->Filename[0] = '\0';
+        entry->name[0] = '\0';
         while (!isStackEmpty(&nameStack))
         {
             popStack(&nameStack, &temp);
             // Copy Full Name Back into the file structure
-            strncat((char*)entry->Filename, (char*)temp.longFilename, FILENAME_LF_SIZE + 1);
+            strncat((char*)entry->name, (char*)temp.longFilename, FILENAME_LF_SIZE + 1);
         }
 
         /********************* 	 Get File Extension from the LFN 	**********************/
-        uint8_t* pstart = entry->Filename + (strlen((char*)entry->Filename) - FILE_EXT_LONG_SIZE - 1);
+        uint8_t* pstart = entry->name + (strlen((char*)entry->name) - FILE_EXT_LONG_SIZE - 1);
         bool periodFound = false;
         uint8_t extLen = 0;
 
-        entry->FileExt[0] = '\0';
+        entry->ext[0] = '\0';
 
         /* Search through the last few characters for a period. If we find it assume *
 		 * the following characters are the file extension. 					     */
@@ -666,9 +666,9 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
                 // Bump the pointer to the next char
                 pstart++;
                 extLen = strlen((char*)pstart);
-                strncpylower(entry->FileExt, pstart, extLen);
+                strncpylower(entry->ext, pstart, extLen);
                 // Terminate the the end of the file extension
-                entry->FileExt[extLen] = '\0';
+                entry->ext[extLen] = '\0';
             }
         }
 
@@ -701,7 +701,7 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
     }
 
     // Get File Size
-    entry->FileSize = ToLittleEndian(entryAddr + currOffset + FILE_SIZE, FILE_SIZE_SIZE);
+    entry->size = ToLittleEndian(entryAddr + currOffset + FILE_SIZE, FILE_SIZE_SIZE);
 
     /***************	Save Directory  Block address and offset	***************/
     // Note: These are calculated this way since its possible to read with multi-block buffer
@@ -813,7 +813,7 @@ static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, S
             entryCount++;
 
             // Match the file names
-            if (strcmp((char*)file->Filename, (char*)Filename) == 0 && strcmp((char*)file->FileExt, (char*)FileExt) == 0)
+            if (strcmp((char*)file->name, (char*)Filename) == 0 && strcmp((char*)file->ext, (char*)FileExt) == 0)
             {
                 // Found the file, so exit the function
                 return 0;
@@ -989,13 +989,13 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
     HexdumpBuffer(entryBlock + file->context->DirEntryOffset, DIR_BYTES_PER_ENTRY);
 #endif
 
-    if (file->FileSize == ToLittleEndian(entryfileSize, FILE_SIZE_SIZE))
+    if (file->size == ToLittleEndian(entryfileSize, FILE_SIZE_SIZE))
     {
         // Nothing has changed - success with no operation
         return 0;
     }
 
-    ToEndianBuf(entryfileSize, file->FileSize, DATA_SIZE_WORD);
+    ToEndianBuf(entryfileSize, file->size, DATA_SIZE_WORD);
 
 #if defined(FAT_DEBUG_GENERIC)
     HexdumpBuffer(entryBlock + file->DirEntryOffset, DIR_BYTES_PER_ENTRY);
@@ -1056,7 +1056,7 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
     uint8_t* entryAddr = SD_GetBuffAddr(pFAT->pSDHandle) + file->context->DirEntryOffset;
 
     // Parse the filename and extension from the user input and remove path from fileName
-    fileName += parseFilename((char*)fileName, file->Filename, file->FileExt);
+    fileName += parseFilename((char*)fileName, file->name, file->ext);
 
     // Create the 8.3 filename from the input
     uint8_t shortFilename[FILENAME_SIZE + FILE_EXT_SHORT_SIZE + 1] = {0};
@@ -1215,9 +1215,9 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename)
 {
     // First copy the filename end extension into 8.3 format
-    strncpy((char*)filename, (char*)file->Filename, FILENAME_SIZE);
+    strncpy((char*)filename, (char*)file->name, FILENAME_SIZE);
 
-    uint8_t nameLen = strlen((char*)file->Filename);
+    uint8_t nameLen = strlen((char*)file->name);
 
     // If the name exceeds the max characters
     if (nameLen > FILENAME_SIZE)
@@ -1235,7 +1235,7 @@ static uint8_t getShortFilename(file_entry_t* file, uint8_t* filename)
     filename[FILENAME_SIZE] = '\0';
 
     // Copy on the extension
-    strncat((char*)filename, (char*)file->FileExt, FILENAME_SIZE + FILE_EXT_SHORT_SIZE);
+    strncat((char*)filename, (char*)file->ext, FILENAME_SIZE + FILE_EXT_SHORT_SIZE);
 
     // Update name to upper case
     strntoUpper(filename, FILENAME_SIZE + FILE_EXT_SHORT_SIZE);
@@ -1390,7 +1390,7 @@ int loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
 
             // Determine if the end of the file is mid-cluster
             // TODO: This may need some updates
-            if (file->FileSize % (pFAT->SystemInfo->BytesPerSector * pFAT->SystemInfo->SectorsPerCluster))
+            if (file->size % (pFAT->SystemInfo->BytesPerSector * pFAT->SystemInfo->SectorsPerCluster))
             {
                 enqueue(&pNodesQueue->Info, &currClusterID);
             }
@@ -1534,7 +1534,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
     uint32_t sectorsToRead = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
 
     // Calculate the number of sectors remaining in the file and adjust to not read past the end of the file
-    uint32_t totalFileSectors = (file->FileSize + (systemInfo->BytesPerSector - 1)) / systemInfo->BytesPerSector;
+    uint32_t totalFileSectors = (file->size + (systemInfo->BytesPerSector - 1)) / systemInfo->BytesPerSector;
     uint32_t sectorsRemaining = totalFileSectors - sectorsRead;
     sectorsToRead = (sectorsRemaining < sectorsToRead) ? sectorsRemaining : sectorsToRead;
 
@@ -1563,7 +1563,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
     sectorsRead += sectorsToRead;
 
     // Found the End of File
-    if ((sectorsRead * systemInfo->BytesPerSector) >= file->FileSize)
+    if ((sectorsRead * systemInfo->BytesPerSector) >= file->size)
     {
         // Done processing the current cluster
         dequeue(&pNodesQueue->Info, &tempNode);
@@ -1576,7 +1576,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         // Set output parameters
         uint32_t bufSize = SD_GetBuffSize(pFAT->pSDHandle);
         *data = SD_GetBuffAddr(pFAT->pSDHandle);
-        *size = file->FileSize % bufSize;
+        *size = file->size % bufSize;
         SD_ToggleCurrBuff(pFAT->pSDHandle);
 
         return 0;
@@ -1692,7 +1692,7 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         /*** Determine where to start writing ***/
         
         // Calculate how many bytes are written to the final cluster
-        uint32_t bytesPerFinalCluster = file->FileSize % (systemInfo->BytesPerSector * systemInfo->SectorsPerCluster);
+        uint32_t bytesPerFinalCluster = file->size % (systemInfo->BytesPerSector * systemInfo->SectorsPerCluster);
 
         // Peak the next node from the Queue, it'd be dequeued when its finished.
         peekQueue(&pNodesQueue->Info, &tempNode);
@@ -1727,13 +1727,13 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
     // Determine how File size needs to be updated
     if (file->context->EndingCluster == tempNode)
     {
-        uint32_t finalBlockOffset = file->FileSize % size;
+        uint32_t finalBlockOffset = file->size % size;
 
-        file->FileSize += size - finalBlockOffset;
+        file->size += size - finalBlockOffset;
     }
     else
     {
-        file->FileSize += size;
+        file->size += size;
     }
 
     // Determine how the current sector needs to be incremented
@@ -1841,7 +1841,7 @@ uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID)
  */
 static bool isEndOfDir(file_entry_t* file)
 {
-    return file->Filename[0] == END_OF_DIRECTORY;
+    return file->name[0] == END_OF_DIRECTORY;
 }
 
 

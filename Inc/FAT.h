@@ -52,14 +52,14 @@ typedef enum
 // Forward declaration only 
 struct file_context_t;
 
-/*s
+/*
  *  Structure to hold file information
  */
 typedef struct
 {
-    uint8_t Filename[FILENAME_MAX_SIZE + 1];
-    uint8_t FileExt[FILE_EXT_LONG_SIZE + 1];
-    uint32_t FileSize;
+    uint8_t name[FILENAME_MAX_SIZE + 1];
+    uint8_t ext[FILE_EXT_LONG_SIZE + 1];
+    uint32_t size;
     file_mode_t mode;
     file_entry_type_t type;
     file_state_t state;
