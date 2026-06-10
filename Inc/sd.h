@@ -1,12 +1,12 @@
 /*
- * SD_Card.h
+ * sd.h
  *
  *  Created on: Sep 13, 2020
  *      Author: thomashamilton
  */
 
-#ifndef INC_SD_CARD_H_
-#define INC_SD_CARD_H_
+#ifndef INC_SD_H_
+#define INC_SD_H_
 
 // Standard Libraries
 #include <stdint.h>
@@ -143,4 +143,4 @@ void SD_IRQHandling(SD_Handle_t* pSDHandle);
 /* Handler for SD Card */
 extern SD_Handle_t SD_Handle;
 
-#endif /* INC_SD_CARD_H_ */
+#endif /* INC_SD_H_ */

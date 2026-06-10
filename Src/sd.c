@@ -1,11 +1,11 @@
 /*
- * SD_Card.c
+ * sd.c
  *
  *  Created on: Sep 13, 2020
  *      Author: thomashamilton
  */
 
-#include "SD_Card.h"
+#include "sd.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>

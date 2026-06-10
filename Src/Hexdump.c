@@ -5,7 +5,7 @@
  *      Author: thomashamilton
  */
 #include "Hexdump.h"
-#include "SD_Card.h"
+#include "sd.h"
 #include "terminal.h"
 
 uint8_t DumpBuf[DUMP_BUF_SIZE] = {0};
