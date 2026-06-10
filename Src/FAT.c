@@ -7,6 +7,7 @@
 
 #include "FAT.h"
 #include "sd.h"
+#include "sd_spec.h"
 #include "Queue.h"
 #include "Stack.h"
 #include "stm32f4xx_dma_driver.h"
