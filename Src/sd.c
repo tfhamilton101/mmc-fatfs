@@ -18,20 +18,6 @@
  *                          SD Card Buffer Definitions
  *************************************************************************************/
 
-// Supported Allocation Unit (cluster) sizes in bytes.
-// Note: Because this driver allocates a double buffer, most MCUs 
-// cannot support cluster sizes greater than 32KB due to RAM constraints.
-#define CLUSTER_SIZE_4KB (16 * SD_DEFAULT_BLOCK_SIZE)
-#define CLUSTER_SIZE_8KB (16 * SD_DEFAULT_BLOCK_SIZE)
-#define CLUSTER_SIZE_16KB (32 * SD_DEFAULT_BLOCK_SIZE)
-#define CLUSTER_SIZE_32KB (64 * SD_DEFAULT_BLOCK_SIZE)
-
-// The SD RX buffer size must be a power-of-two multiple of the default block size.
-// Note: Matching this to the card's allocation unit size maximizes Read/Write efficiency.
-// If SD_BUFFER_SIZE exceeds the card's cluster size, Read/Write operations are capped 
-// and executed at single-cluster increments.
-#define SD_BUFFER_SIZE CLUSTER_SIZE_16KB
-
 /*
  * DMA Threshold - Minimum transfer size for DMA efficiency
  * 
@@ -105,11 +91,6 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 
 /* I/O Functions */
 static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle);
-
-/*** Private Variables ***/
-// RX Buffer for SD Reads
-static uint8_t SD_BuffA[SD_BUFFER_SIZE];
-static uint8_t SD_BuffB[SD_BUFFER_SIZE];
 
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
@@ -230,12 +211,6 @@ int SD_Init(SD_Handle_t* pSDHandle)
         // not implemented
         return -EIO;
     }
-
-    // Configure SD buffer into
-    pSDHandle->bufferInfo.pBufA = SD_BuffA;
-    pSDHandle->bufferInfo.pBufB = SD_BuffB;
-    pSDHandle->bufferInfo.pCurrBuf = SD_BuffA;
-    pSDHandle->bufferInfo.Size = SD_BUFFER_SIZE;
 
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
@@ -762,9 +737,9 @@ static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
  *
  * 	@note				 -
  */
-int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
+int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
 {
-    if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
+    if (BlockCount == 0)
     {
         return -EINVAL;
     }
@@ -794,7 +769,7 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount
         * ----------------------------------------
         */
 
-    uint8_t* rxBuffer = SD_GetBuffAddr(pSDHandle);
+    uint8_t* rxBuffer = pData;
     uint8_t CRC[2];
 
     for (uint32_t n = 0; n < BlockCount; n++, rxBuffer += SD_DEFAULT_BLOCK_SIZE)
@@ -856,9 +831,9 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount
  *
  * 	@note				 -
  */
-int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
+int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
 {
-    if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
+    if (BlockCount == 0)
     {
         return -EINVAL;
     }
@@ -888,7 +863,7 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCoun
         * ----------------------------------------
         */
 
-    uint8_t* TxBuffer = SD_GetBuffAddr(pSDHandle);
+    uint8_t* TxBuffer = pData;
     uint8_t dummy[2] = {0xFF, 0xFF};
     uint8_t CRC[2] = {0xFF, 0xFF};
     uint8_t dataResp;
@@ -1014,61 +989,6 @@ static void timeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi)
     {
         TIM_PeripheralControl(sdTIM, DISABLE);
     }
-}
-
-/****************************************************************************************
- *  @fn                - SD_GetBuffAddr
- *
- * 	@brief			   - Function to get the working buffer memory address
- *
- *  @param[pSDHandle]  -  Handler structure for SD Card
- *
- *  @return            -  memory location
- *
- *  @note              -
- */
-uint8_t* SD_GetBuffAddr(SD_Handle_t* pSDHandle)
-{
-    return pSDHandle->bufferInfo.pCurrBuf;
-}
-
-/****************************************************************************************
- *  @fn                - SD_SetCurrBuff
- *
- *  @brief             - Set Current Buffer 
- *
- *  @param[pSDHandle]  -  Handler structure for SD Card
- *
- *  @return            -  
- *
- *  @note              - 
- */
-void SD_ToggleCurrBuff(SD_Handle_t* pSDHandle)
-{
-    if (pSDHandle->bufferInfo.pCurrBuf == pSDHandle->bufferInfo.pBufA)
-    {
-        pSDHandle->bufferInfo.pCurrBuf = pSDHandle->bufferInfo.pBufB;
-    }
-    else
-    {
-        pSDHandle->bufferInfo.pCurrBuf = pSDHandle->bufferInfo.pBufA;
-    }
-}
-
-/****************************************************************************************
- *	@fn 			     - SD_GetBuffSize
- *
- * 	@brief			     - Function to get buffer size
- *
- * 	@param[pSDHandle]	 - Handler structure for SD Card
- *
- * 	@return			     - buffer size
- *
- * 	@note				 -
- */
-uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle)
-{
-    return pSDHandle->bufferInfo.Size;
 }
 
 /*******************       I/O Functions      *******************/

@@ -62,17 +62,6 @@ typedef enum
     SD_TRANSFER_DMA,
 } sd_trans_modes_t;
 
-/*
- * @bufferInfo_t
- * Buffer Related Variables
- */
-typedef struct
-{
-    uint32_t Size;     /*   Size of Data TX & RX buffer               */
-    uint8_t* pBufA;    /*   Memory location of the TX buffer          */
-    uint8_t* pBufB;    /*   Memory location of the TX buffer          */
-    uint8_t* pCurrBuf; /*   Memory location of the current buffer     */
-} bufferInfo_t;
 
 typedef enum
 {
@@ -98,7 +87,6 @@ typedef struct SD_Handle_t
     sd_crc_modes_t crcEn;          /*!  < possible values from @crcEn>         */
     SD_States_t CardState;         /*!  < possible values from @CardState>     */
     sd_trans_modes_t transferMode; /*   < possible values from @transferMode   */
-    bufferInfo_t bufferInfo;       /*   Buffer Info Structure                     */
     SPI_Handle_t SPI;              /*   SPI Handle Structure                      */
     GPIO_Handle_t chipSelect;      /*   Handler Chip select GPIOx                 */
     GPIO_Handle_t cardDetect;      /*   Handler Card Detect GPIOx                 */
@@ -119,14 +107,11 @@ void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t*
 
 /* Read / Write function */
 /* Returns 0 on success, negative errno on failure (-EINVAL, -ETIMEDOUT, or -EIO) */
-int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
-int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount);
+int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount);
+int SD_WriteBlock(SD_Handle_t* pSDHandle,  uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount);
 
 /* Helper function */
 SD_States_t SD_GetState(SD_Handle_t* pSDHandle);
-uint8_t* SD_GetBuffAddr(SD_Handle_t* pSDHandle);
-uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle);
-void SD_ToggleCurrBuff(SD_Handle_t* pSDHandle);
 
 /* IRQ Functions */
 void SD_IRQHandling(SD_Handle_t* pSDHandle);
