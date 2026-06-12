@@ -519,20 +519,21 @@ static int getSystemInfo(FAT_Handle_t* pFAT)
 int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 {
     // These local variables are used to make function statements shorter
-    uint32_t rxBufferSize = FAT_GetBuffSize();
-    uint8_t* entryAddr = FAT_GetBuffAddr();
+    uint8_t* rxBuff = pFAT->sector_buf;
+    uint32_t rxBuffSize = sizeof(pFAT->sector_buf);
+    uint32_t blocksPerBuff = rxBuffSize / pFAT->SystemInfo->BytesPerSector;
 
     // Initialize scan position from directory state
     uint32_t currBaseAddr = dir->context->iterBaseAddr;
     uint32_t currOffset = dir->context->iterOffset;
     
     // Read new block if necessary
-    if (currOffset >= rxBufferSize)
+    if (currOffset >= rxBuffSize)
     {
         // Increment the base address to the next sector
         if (getFatType(pFAT) == FAT_TYPE_FAT16)
         {
-            currBaseAddr += rxBufferSize;
+            currBaseAddr += rxBuffSize;
         }
         else
         {
@@ -541,7 +542,7 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
         currOffset = 0;
 
-        int status = SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), currBaseAddr, rxBufferSize / pFAT->SystemInfo->BytesPerSector);
+        int status = SD_ReadBlock(pFAT->pSDHandle, rxBuff, currBaseAddr, blocksPerBuff);
 
         // Read Error Handling
         if (status < 0)
@@ -550,6 +551,8 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
             return -EIO;
         }
     }
+
+    uint8_t* entryAddr = rxBuff;
 
     // The first byte of the filename have special value.
     // Skip over any deleted files.
@@ -622,12 +625,12 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
             currOffset += DIR_BYTES_PER_ENTRY;
 
             // Read new block if necessary
-            if (currOffset >= rxBufferSize)
+            if (currOffset >= rxBuffSize)
             {
                 // Increment the base address to the next sector
                 if (getFatType(pFAT) == FAT_TYPE_FAT16)
                 {
-                    currBaseAddr += rxBufferSize;
+                    currBaseAddr += rxBuffSize;
                 }
                 else
                 {
@@ -636,7 +639,7 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
                 currOffset = 0;
 
-                int status = SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), currBaseAddr, rxBufferSize / pFAT->SystemInfo->BytesPerSector);
+                int status = SD_ReadBlock(pFAT->pSDHandle, rxBuff, currBaseAddr, blocksPerBuff);
 
                 // Read Error Handling
                 if (status < 0)
@@ -796,7 +799,7 @@ static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, S
         peekQueue(&addrQueue, &workingDir);
 
         // Read the first blocks of the working directory
-        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), workingDir, FAT_GetBuffSize() / pFAT->SystemInfo->BytesPerSector);
+        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, pFAT->sector_buf, workingDir, sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector);
 
         // Read Error Handling
         if (cmdStatus < 0)
@@ -1336,8 +1339,8 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
         file->context->iterBaseAddr = getClusterAddr(pFAT, file->context->StartingCluster);
         file->context->iterOffset = 0;
 
-        uint32_t rxBufferSize = FAT_GetBuffSize();
-        SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), file->context->iterBaseAddr, rxBufferSize / pFAT->SystemInfo->BytesPerSector);
+        uint32_t rxBuffSize = FAT_GetBuffSize();
+        SD_ReadBlock(pFAT->pSDHandle, pFAT->sector_buf, file->context->iterBaseAddr, rxBuffSize / pFAT->SystemInfo->BytesPerSector);
 
         // We don't need to load up the NodesQueue for a directory
         return 0;
@@ -2020,12 +2023,15 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
+    uint8_t *rxBuff = pFAT->sector_buf;
+    uint32_t blocks = sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector;
+
     // Only read a new block when the cluster entry is in a different sector
     if (*pLoadedBaseAddr != clusterBaseAddr)
     {
         *pLoadedBaseAddr = clusterBaseAddr;
 
-        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), clusterBaseAddr, FAT_GetBuffSize() / pFAT->SystemInfo->BytesPerSector);
+        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, rxBuff, clusterBaseAddr, blocks);
 
         // If the command fails, send invalid clusterID
         if (cmdStatus < 0)
@@ -2034,7 +2040,7 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
         }
     }
 
-    return ToLittleEndian(FAT_GetBuffAddr() + clusterOffset, clusterIdSize);
+    return ToLittleEndian(rxBuff + clusterOffset, clusterIdSize);
 }
 
 /****************************************************************************************
