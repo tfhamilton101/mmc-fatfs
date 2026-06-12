@@ -134,8 +134,6 @@ fat_status_t FAT_getStat(FAT_Handle_t* pFAT);
 /* IRQ Functions */
 void FAT_IRQHandling(FAT_Handle_t* pFAT);
 
-uint8_t* FAT_GetBuffAddr(void);
-
 /************************************************************************************
  *			        		Externs for other files to use						*
  ************************************************************************************/
