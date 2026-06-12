@@ -1,11 +1,12 @@
 /*
- * SD_Card.c
+ * sd.c
  *
  *  Created on: Sep 13, 2020
  *      Author: thomashamilton
  */
 
-#include "SD_Card.h"
+#include "sd.h"
+#include "sd_spec.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -16,20 +17,6 @@
 /************************************************************************************
  *                          SD Card Buffer Definitions
  *************************************************************************************/
-
-// Supported Allocation Unit (cluster) sizes in bytes.
-// Note: Because this driver allocates a double buffer, most MCUs 
-// cannot support cluster sizes greater than 32KB due to RAM constraints.
-#define CLUSTER_SIZE_4KB (16 * SD_DEFAULT_BLOCK_SIZE)
-#define CLUSTER_SIZE_8KB (16 * SD_DEFAULT_BLOCK_SIZE)
-#define CLUSTER_SIZE_16KB (32 * SD_DEFAULT_BLOCK_SIZE)
-#define CLUSTER_SIZE_32KB (64 * SD_DEFAULT_BLOCK_SIZE)
-
-// The SD RX buffer size must be a power-of-two multiple of the default block size.
-// Note: Matching this to the card's allocation unit size maximizes Read/Write efficiency.
-// If SD_BUFFER_SIZE exceeds the card's cluster size, Read/Write operations are capped 
-// and executed at single-cluster increments.
-#define SD_BUFFER_SIZE CLUSTER_SIZE_16KB
 
 /*
  * DMA Threshold - Minimum transfer size for DMA efficiency
@@ -55,204 +42,6 @@
  *       then TIMxCLK = PCLKx, otherwise TIMxCLK = 2x PCLKx. See clock tree for more details.
  */
 #define SD_TIMEOUT_PRESCALE 152
-
-/************************************************************************* 
- *                         SD Command Typedefs                           * 
- *************************************************************************/
-
-/*
- *  Structure for SPI R1 Response Flags
- */
-typedef union {
-    uint8_t Flags;
-    struct
-    {
-        uint8_t Idle : 1;
-        uint8_t Erase_Reset : 1;
-        uint8_t Illigal_Command : 1;
-        uint8_t Command_CRC_Err : 1;
-        uint8_t Erase_Seq_Err : 1;
-        uint8_t Address_Err : 1;
-        uint8_t Paramenter_Error : 1;
-        uint8_t Not_Used : 1;
-    };
-} R1_Response_t;
-
-/*
- *  Structure for SPI R3 Response Flags
- */
-typedef struct
-{
-    uint32_t OCR;
-} R3_Response_t;
-
-/*
- *  Structure for SPI R7 Response Flags
- */
-typedef struct
-{
-    uint8_t Check_Pattern;
-    uint8_t Voltage_Accepted;
-    uint16_t Reserved;
-    uint8_t Command_Version;
-} R7_Response_t;
-
-/*
- *  Structure to Hold Parsed SPI Command Response Flags
- */
-typedef struct
-{
-    R1_Response_t R1;
-    R3_Response_t R3;
-    R7_Response_t R7;
-} Command_Response_t;
-
-/*
- *  SD Command Response Types
- */
-typedef enum
-{
-    RESPONSE_R1 = 1,
-    RESPONSE_R3 = 3,
-    RESPONSE_R7 = 7,
-} sd_response_t;
-
-
-/************************************************************************************
- *			        		SD Response Macros
- *************************************************************************************/
-#define R1_IDLE 0x01
-#define CMD0_MAX_ATTEMPTS 8
-
-/************************************************************************************
- *			        		Command Generic Macros
- *************************************************************************************/
-
-// Command Index byte, 32-bit Argument and optional CRC.
-#define COMMAND_FRAME_LEN 6
-
-/* Command response time */
-#define NCR_BYTES 8
-
-/* Bit Definitions for SD Command */
-typedef enum
-{
-    TRAN_BIT = (1 << 6),
-    STOP_BIT = (1 << 0),
-} command_frame_bits_t;
-
-/************************************************************************************
- *			        		SD Card Register Bit positions
- *************************************************************************************/
-typedef enum
-{
-    OCR_CCS = 30,
-    OCR_PWR_UP_STATUS = 31,
-} OCR_bit_pos_t;
-
-/************************************************************************************
- *			        		SD Command Macros
- *************************************************************************************/
-
-/* Command ID Definitions */
-typedef enum
-{
-    /***  GO_IDLE_STATE  ***/
-    CMD0 = 0,
-    /***  SEND_IF_COND  ***/
-    CMD8 = 8,
-    /***  STOP_TRANSMISSION  ***/
-    CMD12 = 12,
-    /***  SET_BLOCKLEN  ***/
-    CMD16 = 16,
-    /***  READ_SINGLE_BLOCK  ***/
-    CMD17 = 17,
-    /***  READ_MULTIPLE_BLOCK  ***/
-    CMD18 = 18,
-    /***  SET_BLOCK_COUNT  ***/
-    CMD23 = 23,
-    /***  WRITE_BLOCK  ***/
-    CMD24 = 24,
-    /***  WRITE_MULTIPLE_BLOCK  ***/
-    CMD25 = 25,
-    /***  APP_CMD  ***/
-    CMD55 = 55,
-    /***  READ_OCR  ***/
-    CMD58 = 58,
-    /***  APP_SEND_OP_COND  ***/
-    ACMD41 = 41,
-} sd_cmd_ID_t;
-
-/* Command Args Definitions */
-typedef enum
-{
-    CMD_ARG_NULL = 0x00000000,
-    /***  SEND_IF_COND  ***/
-    /* Argument:
-     * [31:12] Reserved
-     * [11:8] Voltage Applied
-     * [7:0] Check Pattern
-     */
-    CMD8_ARG = 0x000001AA,
-    /***  SET_BLOCKLEN  ***/
-    CMD16_ARG = SD_DEFAULT_BLOCK_SIZE,
-    /***  APP_SEND_OP_COND  ***/
-    /* Argument:
-     * [31] Reserved bit
-     * [30] HCS OCR[30]
-     * [29] reserved for eSD
-     * [28] XPC
-     * [27:25] reserved bits
-     * [24] S18R
-     * [23:0] Vdd voltage (OCR[23:0])
-     */
-    ACMD41_ARG = 0x40000000,
-} sd_cmd_args_t;
-
-/* Command CRC Definitions */
-typedef enum
-{
-    CMD_CRC_NULL = 0x00,
-    /***  GO_IDLE_STATE  ***/
-    CMD0_CRC = 0x95,
-    /***  SEND_IF_COND  ***/
-    CMD8_CRC = 0x87,
-} sd_cmd_crc_t;
-
-/* Command Token Definitions */
-typedef enum
-{
-    BLOCK_READ_TOKEN = 0xFE,
-    SINGLE_BLOCK_WRITE_TOKEN = 0xFE,
-    MULT_BLOCK_WRITE_TOKEN = 0xFC,
-    STOP_WRITE_TOKEN = 0xFD,
-} sd_cmd_tokens_t;
-
-/**
- *  Write Token Definitions 
- * 
- *  Format: 
- *  [7:5] Dont Care
- *  [4] '0'
- *  [3:1] Status
- *  [0] '1'
- **/
-typedef enum
-{
-    WRITE_DATA_ACCEPTED = 0xE5,
-    WRITE_DATA_REJECTED_CRC = 0xEB,
-    WRITE_DATA_REJECTED_ERR = 0xED,
-} sd_write_tokens_t;
-
-
-/*
- * @SD_CardType
- */
-typedef enum
-{
-    SD_CARDTYPE_SDSC = 0,
-    SD_CARDTYPE_SDXC_SDHC = 1,
-} sd_card_types_t;
 
 /************************************************************************************
  *                              SD Init States                                      
@@ -302,11 +91,6 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 
 /* I/O Functions */
 static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle);
-
-/*** Private Variables ***/
-// RX Buffer for SD Reads
-static uint8_t SD_BuffA[SD_BUFFER_SIZE];
-static uint8_t SD_BuffB[SD_BUFFER_SIZE];
 
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
@@ -427,12 +211,6 @@ int SD_Init(SD_Handle_t* pSDHandle)
         // not implemented
         return -EIO;
     }
-
-    // Configure SD buffer into
-    pSDHandle->bufferInfo.pBufA = SD_BuffA;
-    pSDHandle->bufferInfo.pBufB = SD_BuffB;
-    pSDHandle->bufferInfo.pCurrBuf = SD_BuffA;
-    pSDHandle->bufferInfo.Size = SD_BUFFER_SIZE;
 
     if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
     {
@@ -959,9 +737,9 @@ static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
  *
  * 	@note				 -
  */
-int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
+int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
 {
-    if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
+    if (BlockCount == 0)
     {
         return -EINVAL;
     }
@@ -991,7 +769,7 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount
         * ----------------------------------------
         */
 
-    uint8_t* rxBuffer = SD_GetBuffAddr(pSDHandle);
+    uint8_t* rxBuffer = pData;
     uint8_t CRC[2];
 
     for (uint32_t n = 0; n < BlockCount; n++, rxBuffer += SD_DEFAULT_BLOCK_SIZE)
@@ -1053,9 +831,9 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount
  *
  * 	@note				 -
  */
-int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCount)
+int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
 {
-    if (BlockCount == 0 || ((BlockCount * SD_DEFAULT_BLOCK_SIZE) > SD_GetBuffSize(pSDHandle)))
+    if (BlockCount == 0)
     {
         return -EINVAL;
     }
@@ -1085,7 +863,7 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint32_t BlockAddr, uint32_t BlockCoun
         * ----------------------------------------
         */
 
-    uint8_t* TxBuffer = SD_GetBuffAddr(pSDHandle);
+    uint8_t* TxBuffer = pData;
     uint8_t dummy[2] = {0xFF, 0xFF};
     uint8_t CRC[2] = {0xFF, 0xFF};
     uint8_t dataResp;
@@ -1211,61 +989,6 @@ static void timeoutConfig(SD_Handle_t* pSDHandle, EnOrDi_t EnOrDi)
     {
         TIM_PeripheralControl(sdTIM, DISABLE);
     }
-}
-
-/****************************************************************************************
- *  @fn                - SD_GetBuffAddr
- *
- * 	@brief			   - Function to get the working buffer memory address
- *
- *  @param[pSDHandle]  -  Handler structure for SD Card
- *
- *  @return            -  memory location
- *
- *  @note              -
- */
-uint8_t* SD_GetBuffAddr(SD_Handle_t* pSDHandle)
-{
-    return pSDHandle->bufferInfo.pCurrBuf;
-}
-
-/****************************************************************************************
- *  @fn                - SD_SetCurrBuff
- *
- *  @brief             - Set Current Buffer 
- *
- *  @param[pSDHandle]  -  Handler structure for SD Card
- *
- *  @return            -  
- *
- *  @note              - 
- */
-void SD_ToggleCurrBuff(SD_Handle_t* pSDHandle)
-{
-    if (pSDHandle->bufferInfo.pCurrBuf == pSDHandle->bufferInfo.pBufA)
-    {
-        pSDHandle->bufferInfo.pCurrBuf = pSDHandle->bufferInfo.pBufB;
-    }
-    else
-    {
-        pSDHandle->bufferInfo.pCurrBuf = pSDHandle->bufferInfo.pBufA;
-    }
-}
-
-/****************************************************************************************
- *	@fn 			     - SD_GetBuffSize
- *
- * 	@brief			     - Function to get buffer size
- *
- * 	@param[pSDHandle]	 - Handler structure for SD Card
- *
- * 	@return			     - buffer size
- *
- * 	@note				 -
- */
-uint32_t SD_GetBuffSize(SD_Handle_t* pSDHandle)
-{
-    return pSDHandle->bufferInfo.Size;
 }
 
 /*******************       I/O Functions      *******************/

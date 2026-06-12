@@ -25,6 +25,18 @@
 #define FILE_EXT_SHORT_SIZE 3
 #define FILE_EXT_LONG_SIZE 4
 
+#define FAT_DEFAULT_BLOCK_SIZE 512
+#define FAT_BUFFER_SIZE (FAT_DEFAULT_BLOCK_SIZE * 2)
+
+// Supported Allocation Unit (cluster) sizes in bytes.
+// Note: Because this driver allocates a double buffer, most MCUs 
+// cannot support cluster sizes greater than 32KB due to RAM constraints.
+#define CLUSTER_SIZE_4KB (16 * FAT_DEFAULT_BLOCK_SIZE)
+#define CLUSTER_SIZE_8KB (16 * FAT_DEFAULT_BLOCK_SIZE)
+#define CLUSTER_SIZE_16KB (32 * FAT_DEFAULT_BLOCK_SIZE)
+#define CLUSTER_SIZE_32KB (64 * FAT_DEFAULT_BLOCK_SIZE)
+
+
 typedef enum
 {
     FILE_MODE_READ,
@@ -93,6 +105,7 @@ typedef struct
     fat_status_t FAT_Stat;
     struct SD_Handle_t* pSDHandle;
     System_info_t* SystemInfo;
+    uint8_t sector_buf[FAT_BUFFER_SIZE];
 } FAT_Handle_t;
 
 /************************************************************************************
@@ -106,12 +119,12 @@ int InitFAT(FAT_Handle_t* pFAT, struct SD_Handle_t* pSDHandle);
 /* File Read / Write functions */
 int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
 int FAT_fopenDir(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
-int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
+int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data, uint32_t size);
 int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t size);
 int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
 bool FAT_feof(file_entry_t* file);
 
-int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
+int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data);
 
 /* FAT Directory / File Searching Functions */
 int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);

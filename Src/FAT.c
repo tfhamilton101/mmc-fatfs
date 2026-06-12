@@ -6,7 +6,8 @@
  ****************************************/
 
 #include "FAT.h"
-#include "SD_Card.h"
+#include "sd.h"
+#include "sd_spec.h"
 #include "Queue.h"
 #include "Stack.h"
 #include "stm32f4xx_dma_driver.h"
@@ -22,6 +23,7 @@
 #if defined(FAT_DEBUG_GENERIC)
 #include "Hexdump.h"
 #endif
+
 
 /************************************************************************************
  *							 FAT Macros										        *
@@ -336,7 +338,6 @@ static int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* fi
 static int searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
 static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 
-
 /****************************************************************************************
  *	@fn 			     - InitFAT
  *
@@ -386,15 +387,15 @@ static int getSystemInfo(FAT_Handle_t* pFAT)
     pFAT->SystemInfo = &SystemInfoData;
     
     System_info_t* SystemInfo = pFAT->SystemInfo;
-    uint8_t* buff = SD_GetBuffAddr(pFAT->pSDHandle);
-
+    uint8_t* buff = pFAT->sector_buf;
+    
     /******************		  Read Master Boot Record (MBR) 	   **************/
     /* The MBR is the first sector of the drive. This sector contains boot code *
         * and a partition table. The contents of a FAT file system are located in  *
         * the first partition. In the partition description, We only care about    *
         * the logical block address (LBA) and the	partition type 					*/
 
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, 0, 1);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, buff, 0, 1);
 
     if (cmdStatus < 0)
     {
@@ -442,7 +443,7 @@ static int getSystemInfo(FAT_Handle_t* pFAT)
         bootBlockAddr = LogicalBlockAddress;
     }
 
-    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, bootBlockAddr, 1);
+    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, buff, bootBlockAddr, 1);
 
     if (cmdStatus < 0)
     {
@@ -478,7 +479,7 @@ static int getSystemInfo(FAT_Handle_t* pFAT)
 
     /*  The boot sector has an entry reserved for the Volume label. However, Microsoft ignored their own recommendation and
         *  leaves the field set to the string “NO NAME ”, which is the default for when the volume label has not been set.*/
-    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, SystemInfo->RootDirAddress, 1);
+    cmdStatus = SD_ReadBlock(pFAT->pSDHandle, buff, SystemInfo->RootDirAddress, 1);
 
     if (cmdStatus < 0)
     {
@@ -509,20 +510,21 @@ static int getSystemInfo(FAT_Handle_t* pFAT)
 int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 {
     // These local variables are used to make function statements shorter
-    uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
-    uint8_t* entryAddr = SD_GetBuffAddr(pFAT->pSDHandle);
+    uint8_t* rxBuff = pFAT->sector_buf;
+    uint32_t rxBuffSize = sizeof(pFAT->sector_buf);
+    uint32_t blocksPerBuff = rxBuffSize / pFAT->SystemInfo->BytesPerSector;
 
     // Initialize scan position from directory state
     uint32_t currBaseAddr = dir->context->iterBaseAddr;
     uint32_t currOffset = dir->context->iterOffset;
     
     // Read new block if necessary
-    if (currOffset >= rxBufferSize)
+    if (currOffset >= rxBuffSize)
     {
         // Increment the base address to the next sector
         if (getFatType(pFAT) == FAT_TYPE_FAT16)
         {
-            currBaseAddr += rxBufferSize;
+            currBaseAddr += rxBuffSize;
         }
         else
         {
@@ -531,7 +533,7 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
         currOffset = 0;
 
-        int status = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr, rxBufferSize / pFAT->SystemInfo->BytesPerSector);
+        int status = SD_ReadBlock(pFAT->pSDHandle, rxBuff, currBaseAddr, blocksPerBuff);
 
         // Read Error Handling
         if (status < 0)
@@ -540,6 +542,8 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
             return -EIO;
         }
     }
+
+    uint8_t* entryAddr = rxBuff;
 
     // The first byte of the filename have special value.
     // Skip over any deleted files.
@@ -612,12 +616,12 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
             currOffset += DIR_BYTES_PER_ENTRY;
 
             // Read new block if necessary
-            if (currOffset >= rxBufferSize)
+            if (currOffset >= rxBuffSize)
             {
                 // Increment the base address to the next sector
                 if (getFatType(pFAT) == FAT_TYPE_FAT16)
                 {
-                    currBaseAddr += rxBufferSize;
+                    currBaseAddr += rxBuffSize;
                 }
                 else
                 {
@@ -626,7 +630,7 @@ int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry)
 
                 currOffset = 0;
 
-                int status = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr, rxBufferSize / pFAT->SystemInfo->BytesPerSector);
+                int status = SD_ReadBlock(pFAT->pSDHandle, rxBuff, currBaseAddr, blocksPerBuff);
 
                 // Read Error Handling
                 if (status < 0)
@@ -786,7 +790,7 @@ static int findFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file, S
         peekQueue(&addrQueue, &workingDir);
 
         // Read the first blocks of the working directory
-        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, workingDir, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo->BytesPerSector);
+        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, pFAT->sector_buf, workingDir, sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector);
 
         // Read Error Handling
         if (cmdStatus < 0)
@@ -971,11 +975,11 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
         return -EINVAL;
     }
 
-    uint8_t* entryBlock = SD_GetBuffAddr(pFAT->pSDHandle);
+    uint8_t* entryBlock = pFAT->sector_buf;
     uint8_t* entryfileSize = entryBlock + file->context->DirEntryOffset + FILE_SIZE;
 
     // First read the block that holds the file Directory Entry
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, file->context->DirEntryBaseAddr, 1);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, entryBlock, file->context->DirEntryBaseAddr, 1);
 
     // Read Error Handling
     if (cmdStatus < 0)
@@ -1002,7 +1006,7 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
 #endif
 
     // Write updates to the Directory block
-    cmdStatus = SD_WriteBlock(pFAT->pSDHandle, file->context->DirEntryBaseAddr, 1);
+    cmdStatus = SD_WriteBlock(pFAT->pSDHandle, entryBlock, file->context->DirEntryBaseAddr, 1);
 
     return (cmdStatus < 0) ? -EIO : 0;
 }
@@ -1051,9 +1055,11 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 #endif
 
     /***********  Create new directory entry  ***********/
+    uint8_t* bufferAddr = pFAT->sector_buf;
+    uint32_t bufferSize = sizeof(pFAT->sector_buf);
 
     // Grab the current buffer for later
-    uint8_t* entryAddr = SD_GetBuffAddr(pFAT->pSDHandle) + file->context->DirEntryOffset;
+    uint8_t* entryAddr = bufferAddr + file->context->DirEntryOffset;
 
     // Parse the filename and extension from the user input and remove path from fileName
     fileName += parseFilename((char*)fileName, file->name, file->ext);
@@ -1065,7 +1071,7 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
     /***********  Write Long Filename Entries ***********/
 
     // Read the Directory block
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, file->context->DirEntryBaseAddr, 1);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, bufferAddr, file->context->DirEntryBaseAddr, 1);
 
     // Keep the LFN Unicode character offsets in an array for quick access
     uint8_t entryCharOffsets[FILENAME_LF_SIZE] = {0x01, 0x03, 0x05, 0x07, 0x09, 0x0E, 0x10, 0x12, 0x14, 0x16, 0x18, 0x1C, 0x1E};
@@ -1125,7 +1131,7 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
         *(entryAddr + FILE_ATTRIBUTE) = FILE_FLAG_LFN;
 
         // Update the current directory offset
-        if (file->context->DirEntryOffset < (SD_GetBuffSize(pFAT->pSDHandle) - DIR_BYTES_PER_ENTRY))
+        if (file->context->DirEntryOffset < (bufferSize - DIR_BYTES_PER_ENTRY))
         {
             // Increment the directory entry offset
             file->context->DirEntryOffset += DIR_BYTES_PER_ENTRY;
@@ -1135,24 +1141,25 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 
 #ifndef FAT_DEBUG_GENERIC
             // Write the block to memory
-            cmdStatus = SD_WriteBlock(pFAT->pSDHandle, file->context->DirEntryBaseAddr, 1);
+            cmdStatus = SD_WriteBlock(pFAT->pSDHandle, bufferAddr, file->context->DirEntryBaseAddr, 1);
 #else
+
             // Debug the new entry
-            HexdumpBuffer(SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo->BytesPerSector);
+            HexdumpBuffer(pFAT->sector_buf, sizeof(pFAT->sector_buf));
 #endif
             // Reset the directory entry
             file->context->DirEntryOffset = 0;
 
             // Increment the directory base address
-            uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo->BytesPerSector;
+            uint32_t sectorsPerBuffer = bufferSize / pFAT->SystemInfo->BytesPerSector;
             file->context->DirEntryBaseAddr += sectorsPerBuffer * getFatAddrUnit(pFAT);
 
             // Read next block of memory
-            cmdStatus = SD_ReadBlock(pFAT->pSDHandle, file->context->DirEntryBaseAddr, 1);
+            cmdStatus = SD_ReadBlock(pFAT->pSDHandle, bufferAddr, file->context->DirEntryBaseAddr, 1);
         }
 
         // Grab the current buffer for later
-        entryAddr = SD_GetBuffAddr(pFAT->pSDHandle) + file->context->DirEntryOffset;
+        entryAddr = bufferAddr + file->context->DirEntryOffset;
 
         // Decrement the entry count
         lfnEnties--;
@@ -1191,10 +1198,10 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 
 #ifndef FAT_DEBUG_GENERIC
     // Update the block
-    cmdStatus = SD_WriteBlock(pFAT->pSDHandle, file->context->DirEntryBaseAddr, writeCount);
+    cmdStatus = SD_WriteBlock(pFAT->pSDHandle, bufferAddr, file->context->DirEntryBaseAddr, writeCount);
 #else
     // Debug the new entry
-    HexdumpBuffer(SD_GetBuffAddr(pFAT->pSDHandle), pFAT->SystemInfo->BytesPerSector * writeCount);
+    HexdumpBuffer(pFAT->sector_buf, pFAT->SystemInfo->BytesPerSector * writeCount);
 #endif
 
     return (cmdStatus < 0) ? -EIO : 0;
@@ -1325,8 +1332,8 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
         file->context->iterBaseAddr = getClusterAddr(pFAT, file->context->StartingCluster);
         file->context->iterOffset = 0;
 
-        uint32_t rxBufferSize = SD_GetBuffSize(pFAT->pSDHandle);
-        SD_ReadBlock(pFAT->pSDHandle, file->context->iterBaseAddr, rxBufferSize / pFAT->SystemInfo->BytesPerSector);
+        uint32_t blocksPerBuff = sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector;
+        SD_ReadBlock(pFAT->pSDHandle, pFAT->sector_buf, file->context->iterBaseAddr, blocksPerBuff);
 
         // We don't need to load up the NodesQueue for a directory
         return 0;
@@ -1491,16 +1498,13 @@ int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
  *
  *  @param[pFAT]         - Handler structure for FAT
  *  @param[file]         - Memory location the file details
- *  @param[data]         - Output: Pointer set to SD buffer containing read data
- *  @param[size]         - Output: Number of valid bytes in buffer (full buffer or final block remainder)
+ *  @param[data]         - Caller-provided buffer to read data into
+ *  @param[size]         - Size of the caller-provided buffer in bytes
  *
- * 	@return			     - FREAD_DONE, FREAD_EOF_FOUND, FREAD_FAIL, or FREAD_NOP
+ * 	@return			     - Number of bytes read on success, negative errno on error
  *
- * 	@note			     - Buffer is automatically toggled. For DMA transfers, caller must 
- *                           wait for completion before next read. Size accounts for final 
- *                           block when EOF is reached.
  */
-int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size)
+int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data, uint32_t size)
 {
     NodesQueue* pNodesQueue = &file->context->NodesQueue;
 
@@ -1528,7 +1532,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
     }
 
     System_info_t* systemInfo = pFAT->SystemInfo;
-    uint32_t sectorsPerBuffer = SD_GetBuffSize(pFAT->pSDHandle) / systemInfo->BytesPerSector;
+    uint32_t sectorsPerBuffer = size / systemInfo->BytesPerSector;
 
     // Only read up to a cluster at a time, even if the buffer can hold more. 
     uint32_t sectorsToRead = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
@@ -1551,7 +1555,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
     
     // Read the current data block
     uint32_t addrUnit = getFatAddrUnit(pFAT);
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsToRead);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, data, currBaseAddr + (currSectorNum * addrUnit), sectorsToRead);
 
     // Read Error Handling
     if (cmdStatus < 0)
@@ -1560,6 +1564,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         return -EIO;
     }
 
+    uint32_t sectorsReadBefore = sectorsRead;
     sectorsRead += sectorsToRead;
 
     // Found the End of File
@@ -1573,13 +1578,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         sectorsRead = 0;
         currBaseAddr = 0;
 
-        // Set output parameters
-        uint32_t bufSize = SD_GetBuffSize(pFAT->pSDHandle);
-        *data = SD_GetBuffAddr(pFAT->pSDHandle);
-        *size = file->size % bufSize;
-        SD_ToggleCurrBuff(pFAT->pSDHandle);
-
-        return 0;
+        return (int)(file->size - (sectorsReadBefore * systemInfo->BytesPerSector));
     }
 
     // Determine how the current sector needs to be incremented
@@ -1597,11 +1596,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         {
             int loadStatus = loadFileNodesQueue(pFAT, file, FILE_MODE_READ);
 
-            // fload writes over the block buffer, so we need to re-read the current block.
-            cmdStatus = SD_ReadBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer);
-
-            // Read Error Handling
-            if (cmdStatus < 0 || loadStatus != 0)
+            if (loadStatus != 0)
             {
                 // Failure Could have while loading the queue.
                 while (!isQueueEmpty(&pNodesQueue->Info))
@@ -1618,12 +1613,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         currSectorNum = 0;
     }
 
-    // Set output parameters
-    *data = SD_GetBuffAddr(pFAT->pSDHandle);
-    *size = sectorsToRead * systemInfo->BytesPerSector;
-    SD_ToggleCurrBuff(pFAT->pSDHandle);
-
-    return 0;
+    return (int)(sectorsToRead * systemInfo->BytesPerSector);
 }
 
 /****************************************************************************************
@@ -1657,8 +1647,8 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         return -EINVAL;
     }
 
-    uint32_t sdBufSize = SD_GetBuffSize(pFAT->pSDHandle);
-    if (size > sdBufSize)
+    uint32_t writeBufSize = sizeof(pFAT->sector_buf);
+    if (size > writeBufSize)
     {
         return -EINVAL;
     }
@@ -1669,16 +1659,24 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         return -EINVAL;
     }
 
-    // Copy user buffer to SD buffer and clear remainder
-    uint8_t* sdBuf = SD_GetBuffAddr(pFAT->pSDHandle);
-    memcpy(sdBuf, buffer, size);
-    memset(sdBuf + size, 0, sdBufSize - size);
+    uint8_t* writeBuf = buffer;
+
+    // If the user buffer is smaller than the SD buffer, 
+    // copy it to the sector_buf and pad the rest with zeros
+    if (size < writeBufSize)
+    {
+        writeBuf = pFAT->sector_buf;
+
+        // Copy user buffer to SD buffer and clear remainder
+        memcpy(writeBuf, buffer, size);
+        memset(writeBuf + size, 0, writeBufSize - size);
+    }
 
     uint32_t tempNode;
     uint32_t addrUnit = getFatAddrUnit(pFAT);
     
     System_info_t* systemInfo = pFAT->SystemInfo;
-    uint32_t sectorsPerBuffer = sdBufSize / systemInfo->BytesPerSector;
+    uint32_t sectorsPerBuffer = writeBufSize / systemInfo->BytesPerSector;
 
     // Only write up to a cluster at a time, even if the buffer can hold more. 
     uint32_t sectorsToWrite = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
@@ -1717,8 +1715,10 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         return -EINVAL;
     }
 
+    int cmdStatus = SD_WriteBlock(pFAT->pSDHandle, writeBuf, currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite);
+
     // Write the current data block
-    if (SD_WriteBlock(pFAT->pSDHandle, currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite) < 0)
+    if (cmdStatus < 0)
     {
         // Report Issue
         return -EIO;
@@ -1795,9 +1795,9 @@ bool FAT_feof(file_entry_t* file)
  *
  *  @note              - 
  */
-int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file)
+int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data)
 {
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, getClusterAddr(pFAT, file->context->StartingCluster), 1);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, data, getClusterAddr(pFAT, file->context->StartingCluster), 1);
 
     // Return read status
     return (cmdStatus < 0) ? -EIO : 0;
@@ -2009,12 +2009,15 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
+    uint8_t *rxBuff = pFAT->sector_buf;
+    uint32_t blocks = sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector;
+
     // Only read a new block when the cluster entry is in a different sector
     if (*pLoadedBaseAddr != clusterBaseAddr)
     {
         *pLoadedBaseAddr = clusterBaseAddr;
 
-        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterBaseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo->BytesPerSector);
+        int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, rxBuff, clusterBaseAddr, blocks);
 
         // If the command fails, send invalid clusterID
         if (cmdStatus < 0)
@@ -2023,7 +2026,7 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
         }
     }
 
-    return ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + clusterOffset, clusterIdSize);
+    return ToLittleEndian(rxBuff + clusterOffset, clusterIdSize);
 }
 
 /****************************************************************************************
@@ -2050,6 +2053,10 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
 
     uint32_t ClusterIdValue = 0xFFFF;
 
+    // These local variables are used to make function statements shorter
+    uint8_t* rxBuff = pFAT->sector_buf;
+    uint32_t blocksPerBuff = sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector;
+
     while (ClusterIdValue != FAT_FREE_ID_MARKER)
     {
         // Increment to the next clusterID
@@ -2064,7 +2071,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
             loadedBaseAddr = entryBaseAddr;
 
             // Read new block
-            int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, entryBaseAddr, SD_GetBuffSize(pFAT->pSDHandle) / pFAT->SystemInfo->BytesPerSector);
+            int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, rxBuff, entryBaseAddr, blocksPerBuff);
 
             // If the command fails, send invalid clusterID
             if (cmdStatus < 0)
@@ -2073,7 +2080,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
             }
         }
 
-        ClusterIdValue = ToLittleEndian(SD_GetBuffAddr(pFAT->pSDHandle) + entryOffset, clusterIdSize);
+        ClusterIdValue = ToLittleEndian(rxBuff + entryOffset, clusterIdSize);
     }
 
     return clusterID;
@@ -2100,13 +2107,14 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
     uint32_t nextBaseAddr, nextOffset;
     getFatEntryAddr(pFAT, clusterID, &clusterBaseAddr, &clusterOffset);
     getFatEntryAddr(pFAT, nextID, &nextBaseAddr, &nextOffset);
-    uint8_t* fatBlock = SD_GetBuffAddr(pFAT->pSDHandle);
+
+    uint8_t* fatBlock = pFAT->sector_buf;
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
 
     // Read the FAT block
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, clusterBaseAddr, 1);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, fatBlock, clusterBaseAddr, 1);
 
 #if defined(FAT_DEBUG_TABLE)
     HexdumpBuffer(fatBlock, pFAT->SystemInfo->BytesPerSector);
@@ -2128,7 +2136,7 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
 
 #ifndef FAT_DEBUG_TABLE
         // Write the FAT Block
-        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterBaseAddr, 1);
+        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, fatBlock, clusterBaseAddr, 1);
 #endif
     }
     // Otherwise it will be updated in two read/writes
@@ -2144,11 +2152,11 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
         HexdumpBuffer(fatBlock, pFAT->SystemInfo->BytesPerSector / 4);
 #else
         // Write the FAT Block
-        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, clusterBaseAddr, 1);
+        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, fatBlock, clusterBaseAddr, 1);
 #endif
 
         // Read Block and Update nextID
-        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, nextBaseAddr, 1);
+        cmdStatus = SD_ReadBlock(pFAT->pSDHandle, fatBlock, nextBaseAddr, 1);
         // NextID Terminated with EOF
         ToEndianBuf(fatBlock + nextOffset, FAT_EOF_MARKER_GENERIC, clusterIdSize);
 
@@ -2156,7 +2164,7 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
         HexdumpBuffer(fatBlock, pFAT->SystemInfo->BytesPerSector / 4);
 #else
         // Write the FAT Block
-        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, nextBaseAddr, 1);
+        cmdStatus = SD_WriteBlock(pFAT->pSDHandle, fatBlock, nextBaseAddr, 1);
 #endif
     }
 
