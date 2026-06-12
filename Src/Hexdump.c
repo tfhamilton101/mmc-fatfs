@@ -7,6 +7,7 @@
 #include "Hexdump.h"
 #include "sd.h"
 #include "terminal.h"
+#include "FAT.h"
 
 uint8_t DumpBuf[DUMP_BUF_SIZE] = {0};
 
@@ -162,12 +163,12 @@ dumpInfo_t SdDumpAddr(void* handle, uint32_t addr, uint32_t blocks)
     
     dumpInfo_t info = {
         .blockSize = 512,
-        .buffSize = SD_GetBuffSize(pFAT->pSDHandle),
-        .pbuff = SD_GetBuffAddr(pFAT->pSDHandle),
+        .buffSize = FAT_GetBuffSize(),
+        .pbuff = FAT_GetBuffAddr(),
         .addrUnit = (blocks == 0) ? 512 : 512 * blocks
     };
 
-    SD_ReadBlock(pFAT->pSDHandle, addr, blocks);
+    SD_ReadBlock(pFAT->pSDHandle, info.pbuff, addr, blocks);
 
     return info;
 }
