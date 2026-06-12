@@ -119,7 +119,7 @@ int InitFAT(FAT_Handle_t* pFAT, struct SD_Handle_t* pSDHandle);
 /* File Read / Write functions */
 int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
 int FAT_fopenDir(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t mode);
-int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size);
+int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data, uint32_t size);
 int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t size);
 int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
 bool FAT_feof(file_entry_t* file);
@@ -135,7 +135,6 @@ fat_status_t FAT_getStat(FAT_Handle_t* pFAT);
 void FAT_IRQHandling(FAT_Handle_t* pFAT);
 
 uint8_t* FAT_GetBuffAddr(void);
-uint32_t FAT_GetBuffSize(void);
 
 /************************************************************************************
  *			        		Externs for other files to use						*

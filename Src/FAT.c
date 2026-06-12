@@ -1505,16 +1505,13 @@ int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file)
  *
  *  @param[pFAT]         - Handler structure for FAT
  *  @param[file]         - Memory location the file details
- *  @param[data]         - Output: Pointer set to SD buffer containing read data
- *  @param[size]         - Output: Number of valid bytes in buffer (full buffer or final block remainder)
+ *  @param[data]         - Caller-provided buffer to read data into
+ *  @param[size]         - Size of the caller-provided buffer in bytes
  *
- * 	@return			     - FREAD_DONE, FREAD_EOF_FOUND, FREAD_FAIL, or FREAD_NOP
+ * 	@return			     - Number of bytes read on success, negative errno on error
  *
- * 	@note			     - Buffer is automatically toggled. For DMA transfers, caller must 
- *                           wait for completion before next read. Size accounts for final 
- *                           block when EOF is reached.
  */
-int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* size)
+int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data, uint32_t size)
 {
     NodesQueue* pNodesQueue = &file->context->NodesQueue;
 
@@ -1542,7 +1539,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
     }
 
     System_info_t* systemInfo = pFAT->SystemInfo;
-    uint32_t sectorsPerBuffer = FAT_GetBuffSize() / systemInfo->BytesPerSector;
+    uint32_t sectorsPerBuffer = size / systemInfo->BytesPerSector;
 
     // Only read up to a cluster at a time, even if the buffer can hold more. 
     uint32_t sectorsToRead = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
@@ -1565,7 +1562,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
     
     // Read the current data block
     uint32_t addrUnit = getFatAddrUnit(pFAT);
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), currBaseAddr + (currSectorNum * addrUnit), sectorsToRead);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, data, currBaseAddr + (currSectorNum * addrUnit), sectorsToRead);
 
     // Read Error Handling
     if (cmdStatus < 0)
@@ -1574,6 +1571,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         return -EIO;
     }
 
+    uint32_t sectorsReadBefore = sectorsRead;
     sectorsRead += sectorsToRead;
 
     // Found the End of File
@@ -1587,13 +1585,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         sectorsRead = 0;
         currBaseAddr = 0;
 
-        // Set output parameters
-        uint32_t bufSize = FAT_GetBuffSize();
-        *data = FAT_GetBuffAddr();
-        *size = file->size % bufSize;
-        toggleCurrentBuffer();
-
-        return 0;
+        return (int)(file->size - (sectorsReadBefore * systemInfo->BytesPerSector));
     }
 
     // Determine how the current sector needs to be incremented
@@ -1611,11 +1603,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         {
             int loadStatus = loadFileNodesQueue(pFAT, file, FILE_MODE_READ);
 
-            // fload writes over the block buffer, so we need to re-read the current block.
-            cmdStatus = SD_ReadBlock(pFAT->pSDHandle, FAT_GetBuffAddr(), currBaseAddr + (currSectorNum * addrUnit), sectorsPerBuffer);
-
-            // Read Error Handling
-            if (cmdStatus < 0 || loadStatus != 0)
+            if (loadStatus != 0)
             {
                 // Failure Could have while loading the queue.
                 while (!isQueueEmpty(&pNodesQueue->Info))
@@ -1632,12 +1620,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t** data, uint32_t* 
         currSectorNum = 0;
     }
 
-    // Set output parameters
-    *data = FAT_GetBuffAddr();
-    *size = sectorsToRead * systemInfo->BytesPerSector;
-    toggleCurrentBuffer();
-
-    return 0;
+    return (int)(sectorsToRead * systemInfo->BytesPerSector);
 }
 
 /****************************************************************************************
