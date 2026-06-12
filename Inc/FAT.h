@@ -124,7 +124,7 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
 int FAT_fclose(FAT_Handle_t* pFAT, file_entry_t* file);
 bool FAT_feof(file_entry_t* file);
 
-int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file);
+int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data);
 
 /* FAT Directory / File Searching Functions */
 int FAT_ReadDir(FAT_Handle_t* pFAT, file_entry_t* dir, file_entry_t* entry);

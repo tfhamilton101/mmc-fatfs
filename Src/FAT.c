@@ -338,13 +338,6 @@ static int findDirectory(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* fi
 static int searchPath(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file);
 static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file);
 
-/*** Private Variables ***/
-// RX Buffer for SD Reads
-static uint8_t fat_buffA[FAT_BUFFER_SIZE];
-
-static uint32_t getBufferSize(void);
-static uint8_t* getBuffAddr(void);
-
 /****************************************************************************************
  *	@fn 			     - InitFAT
  *
@@ -982,7 +975,7 @@ static int updateDirEntry(FAT_Handle_t* pFAT, file_entry_t* file)
         return -EINVAL;
     }
 
-    uint8_t* entryBlock = getBuffAddr();
+    uint8_t* entryBlock = pFAT->sector_buf;
     uint8_t* entryfileSize = entryBlock + file->context->DirEntryOffset + FILE_SIZE;
 
     // First read the block that holds the file Directory Entry
@@ -1062,7 +1055,8 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
 #endif
 
     /***********  Create new directory entry  ***********/
-    uint8_t* bufferAddr = getBuffAddr();
+    uint8_t* bufferAddr = pFAT->sector_buf;
+    uint32_t bufferSize = sizeof(pFAT->sector_buf);
 
     // Grab the current buffer for later
     uint8_t* entryAddr = bufferAddr + file->context->DirEntryOffset;
@@ -1137,7 +1131,7 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
         *(entryAddr + FILE_ATTRIBUTE) = FILE_FLAG_LFN;
 
         // Update the current directory offset
-        if (file->context->DirEntryOffset < (getBufferSize() - DIR_BYTES_PER_ENTRY))
+        if (file->context->DirEntryOffset < (bufferSize - DIR_BYTES_PER_ENTRY))
         {
             // Increment the directory entry offset
             file->context->DirEntryOffset += DIR_BYTES_PER_ENTRY;
@@ -1149,14 +1143,15 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
             // Write the block to memory
             cmdStatus = SD_WriteBlock(pFAT->pSDHandle, bufferAddr, file->context->DirEntryBaseAddr, 1);
 #else
+
             // Debug the new entry
-            HexdumpBuffer(getBuffAddr(), pFAT->SystemInfo->BytesPerSector);
+            HexdumpBuffer(pFAT->sector_buf, sizeof(pFAT->sector_buf));
 #endif
             // Reset the directory entry
             file->context->DirEntryOffset = 0;
 
             // Increment the directory base address
-            uint32_t sectorsPerBuffer = getBufferSize() / pFAT->SystemInfo->BytesPerSector;
+            uint32_t sectorsPerBuffer = bufferSize / pFAT->SystemInfo->BytesPerSector;
             file->context->DirEntryBaseAddr += sectorsPerBuffer * getFatAddrUnit(pFAT);
 
             // Read next block of memory
@@ -1206,7 +1201,7 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
     cmdStatus = SD_WriteBlock(pFAT->pSDHandle, bufferAddr, file->context->DirEntryBaseAddr, writeCount);
 #else
     // Debug the new entry
-    HexdumpBuffer(getBuffAddr(), pFAT->SystemInfo->BytesPerSector * writeCount);
+    HexdumpBuffer(pFAT->sector_buf, pFAT->SystemInfo->BytesPerSector * writeCount);
 #endif
 
     return (cmdStatus < 0) ? -EIO : 0;
@@ -1652,8 +1647,8 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         return -EINVAL;
     }
 
-    uint32_t sdBufSize = getBufferSize();
-    if (size > sdBufSize)
+    uint32_t writeBufSize = sizeof(pFAT->sector_buf);
+    if (size > writeBufSize)
     {
         return -EINVAL;
     }
@@ -1664,16 +1659,24 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         return -EINVAL;
     }
 
-    // Copy user buffer to SD buffer and clear remainder
-    uint8_t* sdBuf = getBuffAddr();
-    memcpy(sdBuf, buffer, size);
-    memset(sdBuf + size, 0, sdBufSize - size);
+    uint8_t* writeBuf = buffer;
+
+    // If the user buffer is smaller than the SD buffer, 
+    // copy it to the sector_buf and pad the rest with zeros
+    if (size < writeBufSize)
+    {
+        writeBuf = pFAT->sector_buf;
+
+        // Copy user buffer to SD buffer and clear remainder
+        memcpy(writeBuf, buffer, size);
+        memset(writeBuf + size, 0, writeBufSize - size);
+    }
 
     uint32_t tempNode;
     uint32_t addrUnit = getFatAddrUnit(pFAT);
     
     System_info_t* systemInfo = pFAT->SystemInfo;
-    uint32_t sectorsPerBuffer = sdBufSize / systemInfo->BytesPerSector;
+    uint32_t sectorsPerBuffer = writeBufSize / systemInfo->BytesPerSector;
 
     // Only write up to a cluster at a time, even if the buffer can hold more. 
     uint32_t sectorsToWrite = sectorsPerBuffer > systemInfo->SectorsPerCluster ? systemInfo->SectorsPerCluster : sectorsPerBuffer;
@@ -1712,8 +1715,10 @@ int FAT_fwrite(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* buffer, uint32_t
         return -EINVAL;
     }
 
+    int cmdStatus = SD_WriteBlock(pFAT->pSDHandle, writeBuf, currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite);
+
     // Write the current data block
-    if (SD_WriteBlock(pFAT->pSDHandle, getBuffAddr(), currBaseAddr + (currSectorNum * addrUnit), sectorsToWrite) < 0)
+    if (cmdStatus < 0)
     {
         // Report Issue
         return -EIO;
@@ -1790,9 +1795,9 @@ bool FAT_feof(file_entry_t* file)
  *
  *  @note              - 
  */
-int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file)
+int FAT_readHeaderBlock(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data)
 {
-    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, getBuffAddr(), getClusterAddr(pFAT, file->context->StartingCluster), 1);
+    int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, data, getClusterAddr(pFAT, file->context->StartingCluster), 1);
 
     // Return read status
     return (cmdStatus < 0) ? -EIO : 0;
@@ -2048,6 +2053,10 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
 
     uint32_t ClusterIdValue = 0xFFFF;
 
+    // These local variables are used to make function statements shorter
+    uint8_t* rxBuff = pFAT->sector_buf;
+    uint32_t blocksPerBuff = sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector;
+
     while (ClusterIdValue != FAT_FREE_ID_MARKER)
     {
         // Increment to the next clusterID
@@ -2062,7 +2071,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
             loadedBaseAddr = entryBaseAddr;
 
             // Read new block
-            int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, getBuffAddr(), entryBaseAddr, getBufferSize() / pFAT->SystemInfo->BytesPerSector);
+            int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, rxBuff, entryBaseAddr, blocksPerBuff);
 
             // If the command fails, send invalid clusterID
             if (cmdStatus < 0)
@@ -2071,7 +2080,7 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
             }
         }
 
-        ClusterIdValue = ToLittleEndian(getBuffAddr() + entryOffset, clusterIdSize);
+        ClusterIdValue = ToLittleEndian(rxBuff + entryOffset, clusterIdSize);
     }
 
     return clusterID;
@@ -2098,7 +2107,8 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
     uint32_t nextBaseAddr, nextOffset;
     getFatEntryAddr(pFAT, clusterID, &clusterBaseAddr, &clusterOffset);
     getFatEntryAddr(pFAT, nextID, &nextBaseAddr, &nextOffset);
-    uint8_t* fatBlock = getBuffAddr();
+
+    uint8_t* fatBlock = pFAT->sector_buf;
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
@@ -2307,30 +2317,6 @@ static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint3
 
     // Return the last valid cluster ID (not the EOF marker)
     return lastValidClusterID;
-}
-
-/****************************************************************************************
- *  @fn                - getBuffAddr
- *
- * 	@brief			   - Function to get the working buffer memory address
- *
- *  @return            -  memory location
- */
-static uint8_t* getBuffAddr(void)
-{
-    return fat_buffA;
-}
-
-/****************************************************************************************
- *	@fn 			     - getBufferSize
- *
- * 	@brief			     - Function to get buffer size
- *
- * 	@return			     - buffer size
- */
-static uint32_t getBufferSize(void)
-{
-    return sizeof(fat_buffA);
 }
 
 /*******************       IRQ Handling and callback       *******************/
