@@ -18,10 +18,12 @@
 /******  FAT DEBUG CONFIGS  ******/
 
 // #define FAT_DEBUG_GENERIC
+// #define FAT_DEBUG_WRITE
 // #define FAT_DEBUG_TABLE
 
-#if defined(FAT_DEBUG_GENERIC)
+#if defined(FAT_DEBUG_GENERIC) || defined(FAT_DEBUG_WRITE)
 #include "Hexdump.h"
+#include "terminal.h"
 #endif
 
 
@@ -323,9 +325,9 @@ static int loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint3
 static bool isEndofFatEntry(FAT_Handle_t* pFAT, uint32_t nextCluster);
 static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pBaseAddr, uint32_t* pOffset);
 static uint32_t getClusterAddr(FAT_Handle_t* pFAT, uint32_t ClusterID);
-static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr);
+static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* workingAddr);
 static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t nextID);
-static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID);
+static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* workingAddr);
 static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode);
 /* FAT Directory Functions */
 
@@ -1044,7 +1046,8 @@ static int createFile(FAT_Handle_t* pFAT, uint8_t* fileName, file_entry_t* file)
     /***********  Create a new entry in the FAT table  ***********/
 
     // First Find the next free ClusterID. Start at the first valid clusterID
-    file->context->StartingCluster = findNextFreeClusterID(pFAT, 2);
+    uint32_t workingAddr = 0;
+    file->context->StartingCluster = findNextFreeClusterID(pFAT, 2, &workingAddr);
 
 #ifndef FAT_DEBUG_GENERIC
     // Create the new entry in the FAT
@@ -2001,7 +2004,7 @@ static void getFatEntryAddr(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pB
  *
  * 	@note
  */
-static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* pLoadedBaseAddr)
+static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* workingAddr)
 {
     uint32_t clusterBaseAddr, clusterOffset;
     getFatEntryAddr(pFAT, clusterID, &clusterBaseAddr, &clusterOffset);
@@ -2013,9 +2016,9 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
     uint32_t blocks = sizeof(pFAT->sector_buf) / pFAT->SystemInfo->BytesPerSector;
 
     // Only read a new block when the cluster entry is in a different sector
-    if (*pLoadedBaseAddr != clusterBaseAddr)
+    if (*workingAddr != clusterBaseAddr)
     {
-        *pLoadedBaseAddr = clusterBaseAddr;
+        *workingAddr = clusterBaseAddr;
 
         int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, rxBuff, clusterBaseAddr, blocks);
 
@@ -2036,20 +2039,18 @@ static uint32_t getNextClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_
  *
  * 	@param[pFAT]         - Handler structure for FAT
  * 	@param[clusterID]    - Cluster to start search from (Last Cluster In File)
+ * 	@param[workingAddr]  - Working address to track which FAT block is currently loaded
  *
  * 	@return              - Next Cluster ID
  *
- * 	@note   -
+ * 	@note   - workingAddr should be initialized to 0 before first call
  */
-static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
+static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t* workingAddr)
 {
     uint32_t entryBaseAddr, entryOffset;
 
     // Determine the size of the ClusterIDs
     DataSize_t clusterIdSize = (getFatType(pFAT) == FAT_TYPE_FAT16) ? DATA_SIZE_HALF_WORD : DATA_SIZE_WORD;
-
-    // Track which FAT block is currently loaded to avoid redundant SD reads
-    uint32_t loadedBaseAddr = 0;
 
     uint32_t ClusterIdValue = 0xFFFF;
 
@@ -2066,9 +2067,9 @@ static uint32_t findNextFreeClusterID(FAT_Handle_t* pFAT, uint32_t clusterID)
         getFatEntryAddr(pFAT, clusterID, &entryBaseAddr, &entryOffset);
 
         // Only read a new block when the cluster entry is in a different sector
-        if (loadedBaseAddr != entryBaseAddr)
+        if (*workingAddr != entryBaseAddr)
         {
-            loadedBaseAddr = entryBaseAddr;
+            *workingAddr = entryBaseAddr;
 
             // Read new block
             int cmdStatus = SD_ReadBlock(pFAT->pSDHandle, rxBuff, entryBaseAddr, blocksPerBuff);
@@ -2199,11 +2200,12 @@ static int updateClusterID(FAT_Handle_t* pFAT, uint32_t clusterID, uint32_t next
 static int loadFreeClusterIDs(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster)
 {
     uint32_t currClusterID = startCluster;
+    uint32_t workingAddr = 0;  // Track loaded FAT sector across calls
 
     // Loop until the NodesQueue is full
     while (!isQueueFull(&pNodesQueue->Info))
     {
-        currClusterID = findNextFreeClusterID(pFAT, currClusterID);
+        currClusterID = findNextFreeClusterID(pFAT, currClusterID, &workingAddr);
 
         // Block Read Failure
         if (currClusterID == 0)
@@ -2282,7 +2284,7 @@ fat_status_t FAT_getStat(FAT_Handle_t* pFAT)
 static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint32_t startCluster, fat_traverse_mode_t mode)
 {
     uint32_t currClusterID = startCluster;
-    uint32_t loadedBaseAddr = 0;
+    uint32_t workingAddr = 0;
 
     // Loop until ether the queue is full or EOF is found.
     do
@@ -2298,7 +2300,7 @@ static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint3
         pNodesQueue->Tail = currClusterID;
 
         // Get the next clusterID
-        currClusterID = getNextClusterID(pFAT, currClusterID, &loadedBaseAddr);
+        currClusterID = getNextClusterID(pFAT, currClusterID, &workingAddr);
 
         // Block Read Failure
         if (currClusterID == 0)
