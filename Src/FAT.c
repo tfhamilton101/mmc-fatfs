@@ -1414,8 +1414,7 @@ int loadFileNodesQueue(FAT_Handle_t* pFAT, file_entry_t* file, file_mode_t mode)
     else
     {
         // Starting mid-file
-        uint32_t loadedBaseAddr = 0;
-        currClusterID = getNextClusterID(pFAT, pNodesQueue->Tail, &loadedBaseAddr);
+        currClusterID = pNodesQueue->Tail;
 
         // Block Read Failure
         if (currClusterID == 0)
