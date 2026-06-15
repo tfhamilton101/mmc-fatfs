@@ -1599,7 +1599,7 @@ int FAT_fread(FAT_Handle_t* pFAT, file_entry_t* file, uint8_t* data, uint32_t si
         {
             int loadStatus = loadFileNodesQueue(pFAT, file, FILE_MODE_READ);
 
-            if (loadStatus != 0)
+            if (loadStatus < 0)
             {
                 // Failure Could have while loading the queue.
                 while (!isQueueEmpty(&pNodesQueue->Info))
