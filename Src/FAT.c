@@ -158,28 +158,31 @@ typedef enum
  ************************************************************************************/
 
 /**************************************************************************************
- * An queue is used to hold the clusterIDs that make a file. This is read from the FAT.
- * The size of the queue should be chosen such that most files can fit fully into the queue.
- * This will prevent the program from going back and reading the FAT mid way through a file.
+ * A queue is used to hold a file's clusterIDs that are read from the FAT.
+ * The size of the queue should be chosen that most files can fit completely.
+ * This will reduce the number of mid-file FAT reads.
  *
  * 						FAT16 								FAT32
- * 	  ------------------------------------------------------------------------------
- * 	  | Volume Size	  |	 Windows Default	|| Volume Size	 |	Windows Default	   |
- * 	  ------------------------------------------------------------------------------
- * 	  | 512 MB – 1 GB | 16KB ( 32 sectors)  || 256 MB – 8GB  |	 4KB (  8 sectors) |
- * 	  |   1 GB – 2 GB | 32KB ( 64 sectors)  ||    8GB – 16GB |	 8KB ( 16 sectors) |
- * 	  |   2 GB – 4 GB | 64KB ( 128 sectors) ||   16GB – 32GB |	16KB ( 32 sectors) |
- * 	  ------------------------------------------------------------------------------
+ * 	 ------------------------------------------------------------------------------
+ * 	 | Volume Size	  |	 Windows Default	|| Volume Size	 |	Windows Default	   |
+ * 	 ------------------------------------------------------------------------------
+ * 	 | 512 MB – 1 GB | 16KB ( 32 sectors)  || 256 MB – 8GB  |	 4KB (  8 sectors) |
+ * 	 |   1 GB – 2 GB | 32KB ( 64 sectors)  ||    8GB – 16GB |	 8KB ( 16 sectors) |
+ * 	 |   2 GB – 4 GB | 64KB ( 128 sectors) ||   16GB – 32GB |	16KB ( 32 sectors) |
+ * 	 ------------------------------------------------------------------------------
  *
- *   Using the smallest cluster size (8 sectors) a queue size of 4096
- *   will allow a 16MB ( 4096 * 8 * 512 ) minimum file to fit in the queue.
+ *  Using the smallest FAT32 cluster size (8 sectors / 4KB), a queue size of 256
+ *  allows a maximum file size of 1MB (256 * 8 * 512 bytes) to fit completely.
+ *  Larger cluster sizes allow proportionally larger files to fit.
  *
- * 	  -----------------------------------------------
- * 	  |  File Size  |	 FAT16	    |	 FAT32	    |
- * 	  -----------------------------------------------
- * 	  |     Min   	|	  67MB      |	  16MB      |
- * 	  |     Max  	|	 134MB      |	  67MB      |
- * 	  -----------------------------------------------
+*   -------------------------------------------------------
+ *  | Cluster Size | Sector Count | Max File Size in Queue |
+ *  -------------------------------------------------------
+ *  |     4 KB     |   8 sectors  |           1 MB         |
+ *  |     8 KB     |  16 sectors  |           2 MB         |
+ *  |    16 KB     |  32 sectors  |           4 MB         |
+ *  |    32 KB     |  64 sectors  |           8 MB         |
+ *  -------------------------------------------------------
  *
  *************************************************************************************/
 
@@ -188,7 +191,7 @@ typedef enum
  */
 typedef enum
 {
-    FAT_QUEUE_MAX_CLUSTERS = 4096,
+    NODES_QUEUE_SIZE = 256,
     NODES_QUEUE_TAIL_INIT = 0,
 } FAT_Queue_t;
 
@@ -303,7 +306,7 @@ struct file_context_t
 FAT_Handle_t FAT = {0};
 
 // Buffer to keep File Construction Stack
-static uint32_t FileNodesBuf[FAT_QUEUE_MAX_CLUSTERS];
+static uint32_t FileNodesBuf[NODES_QUEUE_SIZE];
 // Currently there is only one file context, so we can only process one file at a time.
 static struct file_context_t fileContext;
 
@@ -1323,7 +1326,7 @@ int FAT_fopen(FAT_Handle_t* pFAT, uint8_t* path, file_entry_t* file, file_mode_t
     NodesQueue* pNodesQueue = &file->context->NodesQueue;
 
     // Init Queue to hold the ClustersIds of the file
-    pNodesQueue->Info = initQueue(FileNodesBuf, FAT_QUEUE_MAX_CLUSTERS, sizeof(uint32_t));
+    pNodesQueue->Info = initQueue(FileNodesBuf, NODES_QUEUE_SIZE, sizeof(uint32_t));
 
     // Initialized the tail to Zero which is not an acceptable clusterID
     pNodesQueue->Tail = NODES_QUEUE_TAIL_INIT;
