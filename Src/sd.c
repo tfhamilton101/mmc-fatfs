@@ -90,7 +90,7 @@ static void receiveData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 
 /* I/O Functions */
-static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle);
+static card_detect_t getCdStatus(SD_Handle_t* pSDHandle);
 
 /****************************************************************************************
  *	@fn 			     - SD_Init_Hardware
@@ -212,7 +212,7 @@ int SD_Init(SD_Handle_t* pSDHandle)
         return -EIO;
     }
 
-    if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
+    if (SD_IsCardPresent(pSDHandle) == -ENODEV)
     {
         pSDHandle->CardState = SD_STATE_NO_CARD;
         return -ENODEV;
@@ -932,19 +932,24 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, ui
 **********************************************************************************************/
 
 /****************************************************************************************
- *  @fn                - SD_GetState
+ *  @fn                - SD_IsCardPresent
  *
  *  @brief             - Get SD Card State
  *
  *  @param[pSDHandle]  -  Handler structure for SD Card
  *
- *  @return            -  CCardState
+ *  @return            -  0 if card is present, -ENODEV if card is not present
  *
  *  @note              - 
  */
-SD_States_t SD_GetState(SD_Handle_t* pSDHandle)
+int SD_IsCardPresent(SD_Handle_t* pSDHandle)
 {
-    return pSDHandle->CardState;
+    if (getCdStatus(pSDHandle) == CD_REMOVED)
+    {
+        return -ENODEV;
+    }
+
+    return 0;
 }
 
 /****************************************************************************************
@@ -1018,7 +1023,7 @@ static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
 }
 
 /****************************************************************************************
- *  @fn                - SD_GetCDStatus
+ *  @fn                - getCdStatus
  *
  *  @brief             - Read Card Detect Input Pin
  *
@@ -1028,7 +1033,7 @@ static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state)
  *
  *  @note              - 
  */
-static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
+static card_detect_t getCdStatus(SD_Handle_t* pSDHandle)
 {
     GPIO_Handle_t cd = pSDHandle->cardDetect;
 
@@ -1037,10 +1042,8 @@ static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
     {
         return CD_DETECTED;
     }
-    else
-    {
-        return CD_REMOVED;
-    }
+
+    return CD_REMOVED;
 }
 
 /*******************       IRQ Handling and callback       *******************/
@@ -1058,7 +1061,7 @@ static card_detect_t SD_GetCDStatus(SD_Handle_t* pSDHandle)
  */
 void SD_IRQHandling(SD_Handle_t* pSDHandle)
 {
-    if (SD_GetCDStatus(pSDHandle) == CD_REMOVED)
+    if (getCdStatus(pSDHandle) == CD_REMOVED)
     {
         pSDHandle->CardState = SD_STATE_NO_CARD;
     }

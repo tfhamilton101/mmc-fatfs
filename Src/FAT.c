@@ -2338,7 +2338,7 @@ static uint32_t traverseTable(FAT_Handle_t* pFAT, NodesQueue* pNodesQueue, uint3
  */
 void FAT_IRQHandling(FAT_Handle_t* pFAT)
 {
-    if (SD_GetState(pFAT->pSDHandle) == SD_STATE_NO_CARD)
+    if (SD_IsCardPresent(pFAT->pSDHandle) == -ENODEV)
     {
         pFAT->FAT_Stat = FAT_UNINITIALIZED;
     }

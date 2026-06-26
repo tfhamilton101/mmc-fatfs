@@ -111,7 +111,7 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uin
 int SD_WriteBlock(SD_Handle_t* pSDHandle,  uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount);
 
 /* Helper function */
-SD_States_t SD_GetState(SD_Handle_t* pSDHandle);
+int SD_IsCardPresent(SD_Handle_t* pSDHandle);
 
 /* IRQ Functions */
 void SD_IRQHandling(SD_Handle_t* pSDHandle);
