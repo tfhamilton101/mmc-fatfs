@@ -65,7 +65,11 @@ typedef enum
 } card_detect_t;
 
 //-----------   Private function declarations    -----------//
-static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle);
+static int init_card(SD_Handle_t* pSDHandle);
+static SD_Init_States_t initSpi(SD_Handle_t* pSDHandle);
+static int readBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount);
+static int writeBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount);
+
 static void chipSelectControl(SD_Handle_t* pSDHandle, gpio_pin_state_t state);
 static Command_Response_t getResponse(SD_Handle_t* pSDHandle, sd_response_t Format);
 static Command_Response_t parseResponse(uint8_t* Response, sd_response_t Format);
@@ -93,9 +97,16 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len);
 /* I/O Functions */
 static card_detect_t getCdStatus(SD_Handle_t* pSDHandle);
 
+// Populate the sd_ops interface for SPI opperation
+const struct sd_ops sd_ops_spi =
+{
+    .init = init_card,
+    .ReadBlock = readBlock,
+    .WriteBlock = writeBlock,
+};
 
 /****************************************************************************************
- *	@fn 			     - SD_Init_Hardware
+ *	@fn 			     - SD_Init_Spi_Hardware
  *
  * 	@brief			     - Function to initialize SPI peripheral
  *
@@ -108,7 +119,7 @@ static card_detect_t getCdStatus(SD_Handle_t* pSDHandle);
  *
  * 	@note
  */
-void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma)
+void SD_Init_Spi_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma)
 {
     if (pSDHandle->mode == SD_MODE_SDIO)
     {
@@ -196,7 +207,7 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_Init
+ *	@fn 			     - init_card
  *
  * 	@brief			     - Function to initialize SD Card
  *
@@ -206,7 +217,7 @@ void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo)
  *
  * 	@note
  */
-int SD_Init(SD_Handle_t* pSDHandle)
+int init_card(SD_Handle_t* pSDHandle)
 {
     if (pSDHandle->mode == SD_MODE_SDIO)
     {
@@ -220,7 +231,7 @@ int SD_Init(SD_Handle_t* pSDHandle)
         return -ENODEV;
     }
 
-    if (InitSpi(pSDHandle) == INIT_SUCCESS)
+    if (initSpi(pSDHandle) == INIT_SUCCESS)
     {
         pSDHandle->CardState = SD_STATE_READY;
         return 0;
@@ -301,7 +312,7 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
 }
 
 /****************************************************************************************
- *	@fn 			     - InitSpi
+ *	@fn 			     - initSpi
  *
  * 	@brief			     - Function to initialize SD Card in SPI mode
  *
@@ -311,7 +322,7 @@ static void transferData(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t len)
  *
  * 	@note
  */
-static SD_Init_States_t InitSpi(SD_Handle_t* pSDHandle)
+static SD_Init_States_t initSpi(SD_Handle_t* pSDHandle)
 {
     Command_Response_t CmdResponse = {0};
 
@@ -727,7 +738,7 @@ static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
 **********************************************************************************************/
 
 /****************************************************************************************
- *	@fn 			     - SD_ReadBlock
+ *	@fn 			     - readBlock
  *
  * 	@brief			     - Function to read block of data
  *
@@ -739,7 +750,7 @@ static Command_Response_t setBlockLength(SD_Handle_t* pSDHandle)
  *
  * 	@note				 -
  */
-int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
+int readBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
 {
     if (BlockCount == 0)
     {
@@ -821,7 +832,7 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uin
 }
 
 /****************************************************************************************
- *	@fn 			     - SD_WriteBlock
+ *	@fn 			     - writeBlock
  *
  * 	@brief			     - Function to write block of data
  *
@@ -833,7 +844,7 @@ int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uin
  *
  * 	@note				 -
  */
-int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
+int writeBlock(SD_Handle_t* pSDHandle, uint8_t* pData, uint32_t BlockAddr, uint32_t BlockCount)
 {
     if (BlockCount == 0)
     {
