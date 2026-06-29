@@ -5,14 +5,10 @@
  *      Author: thomashamilton
  */
 
-#include "sd.h"
-#include "sd_spec.h"
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
 #include <errno.h>
-#include "stm32f4xx_dma_driver.h"
-#include "stm32f4xx_nvic_driver.h"
+#include "sd.h"
+#include "sd_ops.h"
+#include "sd_spi.h"
 
 /************************************************************************************
  *			        		SD Card Detection
@@ -25,6 +21,25 @@ typedef enum
 
 /* I/O Functions */
 static card_detect_t getCdStatus(SD_Handle_t* pSDHandle);
+
+// local opperations interface 
+static struct sd_ops sd_ops = sd_ops_spi;
+
+
+int SD_Init(SD_Handle_t* pSDHandle)
+{
+    return sd_ops.init(pSDHandle);
+}
+
+int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_t count)
+{
+    return sd_ops.ReadBlock(pSDHandle, pData, addr, count);
+}
+
+int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_t count)
+{
+    return sd_ops.WriteBlock(pSDHandle, pData, addr, count);
+}
 
 /****************************************************************************************
  *  @fn                - getCdStatus
