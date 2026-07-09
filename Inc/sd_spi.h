@@ -12,6 +12,6 @@
 #define INC_SD_SPI_H_
 #include "sd_ops.h"
 
-extern struct sd_ops sd_ops_spi;
+extern const struct sd_ops sd_ops_spi;
 
 #endif /* INC_SD_SPI_H_ */

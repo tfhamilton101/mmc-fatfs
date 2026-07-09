@@ -22,23 +22,23 @@ typedef enum
 /* I/O Functions */
 static card_detect_t getCdStatus(SD_Handle_t* pSDHandle);
 
-// local opperations interface 
-static struct sd_ops sd_ops = sd_ops_spi;
+// local operations interface 
+static const struct sd_ops* sd_ops = &sd_ops_spi;
 
 
 int SD_Init(SD_Handle_t* pSDHandle)
 {
-    return sd_ops.init(pSDHandle);
+    return sd_ops->init(pSDHandle);
 }
 
 int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_t count)
 {
-    return sd_ops.ReadBlock(pSDHandle, pData, addr, count);
+    return sd_ops->ReadBlock(pSDHandle, pData, addr, count);
 }
 
 int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_t count)
 {
-    return sd_ops.WriteBlock(pSDHandle, pData, addr, count);
+    return sd_ops->WriteBlock(pSDHandle, pData, addr, count);
 }
 
 /****************************************************************************************
@@ -54,10 +54,10 @@ int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_
  */
 static card_detect_t getCdStatus(SD_Handle_t* pSDHandle)
 {
-    GPIO_Handle_t cd = pSDHandle->cardDetect;
+    GPIO_Handle_t cd = pSDHandle->hwConfig.cardDetect;
 
     // Active High Switch
-    if (GPIO_ReadFromInputPin(cd.pGPIOx, cd.GPIO_PinConfig.GPIO_PinNumber) == pSDHandle->cardDetPol)
+    if (GPIO_ReadFromInputPin(cd.pGPIOx, cd.GPIO_PinConfig.GPIO_PinNumber) == pSDHandle->hwConfig.cardDetPol)
     {
         return CD_DETECTED;
     }
