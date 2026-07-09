@@ -15,6 +15,11 @@
 #include "stm32f4xx_nvic_driver.h"
 #include "sd_ops.h"
 
+/*
+ *  Helper macro to get SPI handle from SD_Handle_t
+ */
+#define SD_GET_SPI_HANDLE(h) ((SPI_Handle_t*)(h)->hwConfig.pHwHandle)
+
 /************************************************************************************
  *                          SD Card Buffer Definitions
  *************************************************************************************/

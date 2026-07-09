@@ -100,11 +100,6 @@ typedef struct
 } SD_SpiConfig_t;
 
 /*
- *  Helper macro to get SPI handle from SD_Handle_t
- */
-#define SD_GET_SPI_HANDLE(h) ((SPI_Handle_t*)(h)->hwConfig.pHwHandle)
-
-/*
  *  Configuration structure for SD Card
  */
 typedef struct SD_Handle_t
