@@ -79,6 +79,32 @@ typedef struct
 } Timeout_t;
 
 /*
+ *  Hardware configuration structure
+ *  Contains hardware-specific handles and peripherals
+ */
+typedef struct
+{
+    void* pHwHandle;               /*   Hardware handle (SPI_Handle_t* or SDIO_Handle_t*) */
+    GPIO_Handle_t cardDetect;      /*   Handler Card Detect GPIOx                 */
+    gpio_pin_state_t cardDetPol;   /*   SD Card detect polarity                   */
+    Timeout_t cmdTimeout;          /*   Timer Handler for Command Timeouts        */
+} SD_HwConfig_t;
+
+/*
+ *  SPI-specific configuration structure
+ *  Only valid when mode == SD_MODE_SPI
+ */
+typedef struct
+{
+    GPIO_Handle_t chipSelect;      /*   Handler Chip select GPIOx                 */
+} SD_SpiConfig_t;
+
+/*
+ *  Helper macro to get SPI handle from SD_Handle_t
+ */
+#define SD_GET_SPI_HANDLE(h) ((SPI_Handle_t*)(h)->hwConfig.pHwHandle)
+
+/*
  *  Configuration structure for SD Card
  */
 typedef struct SD_Handle_t
@@ -87,11 +113,10 @@ typedef struct SD_Handle_t
     sd_crc_modes_t crcEn;          /*!  < possible values from @crcEn>         */
     SD_States_t CardState;         /*!  < possible values from @CardState>     */
     sd_trans_modes_t transferMode; /*   < possible values from @transferMode   */
-    SPI_Handle_t SPI;              /*   SPI Handle Structure                      */
-    GPIO_Handle_t chipSelect;      /*   Handler Chip select GPIOx                 */
-    GPIO_Handle_t cardDetect;      /*   Handler Card Detect GPIOx                 */
-    gpio_pin_state_t cardDetPol;   /*   SD Card detect polarity                   */
-    Timeout_t cmdTimeout;          /*   Timer Handler for Command Timeouts        */
+    SD_HwConfig_t hwConfig;        /*   Hardware configuration                    */
+    SPI_Handle_t spiHandle;        /*   SPI handle storage (for SPI mode)         */
+    SD_SpiConfig_t spiConfig;      /*   SPI-specific configuration (static storage) */
+    SD_SpiConfig_t* pSpiConfig;    /*   Pointer to spiConfig (NULL for SDIO mode) */
 } SD_Handle_t;
 
 /************************************************************************************
