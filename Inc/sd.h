@@ -13,6 +13,7 @@
 #include "stm32f4xx_gpio_driver.h"
 #include "stm32f4xx_spi_driver.h"
 #include "stm32f4xx_timer_driver.h"
+#include "stm32f4xx_sdio_driver.h"
 
 /************************************************************************* 
  *                         SD Handler Subtypes                           *

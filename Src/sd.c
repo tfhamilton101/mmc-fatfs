@@ -8,6 +8,7 @@
 #include <errno.h>
 #include "sd.h"
 #include "sd_ops.h"
+#include "sd_sdio.h"
 #include "sd_spi.h"
 
 /************************************************************************************
@@ -21,23 +22,34 @@ typedef enum
 
 /* I/O Functions */
 static card_detect_t getCdStatus(SD_Handle_t* pSDHandle);
+static const struct sd_ops* getSdOps(SD_Handle_t* pSDHandle);
 
-// local operations interface 
-static const struct sd_ops* sd_ops = &sd_ops_spi;
+static const struct sd_ops* getSdOps(SD_Handle_t* pSDHandle)
+{
+    if (pSDHandle->mode == SD_MODE_SDIO)
+    {
+        return &sd_ops_sdio;
+    }
+
+    return &sd_ops_spi;
+}
 
 
 int SD_Init(SD_Handle_t* pSDHandle)
 {
+    const struct sd_ops* sd_ops = getSdOps(pSDHandle);
     return sd_ops->init(pSDHandle);
 }
 
 int SD_ReadBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_t count)
 {
+    const struct sd_ops* sd_ops = getSdOps(pSDHandle);
     return sd_ops->ReadBlock(pSDHandle, pData, addr, count);
 }
 
 int SD_WriteBlock(SD_Handle_t* pSDHandle, uint8_t *pData, uint32_t addr, uint32_t count)
 {
+    const struct sd_ops* sd_ops = getSdOps(pSDHandle);
     return sd_ops->WriteBlock(pSDHandle, pData, addr, count);
 }
 
