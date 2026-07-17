@@ -101,6 +101,25 @@ typedef struct
 } SD_SpiConfig_t;
 
 /*
+ *  SD Card Types
+ */
+typedef enum
+{
+    SD_CARDTYPE_SDSC = 0,          /*   SDSC: Standard Capacity (up to 2GB)       */
+    SD_CARDTYPE_SDXC_SDHC = 1,     /*   SDHC/SDXC: High/Extended Capacity (>2GB)  */
+} sd_card_types_t;
+
+/*
+ *  Card information structure
+ *  Stores card-specific parameters determined during initialization
+ */
+typedef struct
+{
+    uint16_t RCA;                  /*   Relative Card Address (SDIO mode only)    */
+    sd_card_types_t cardType;      /*   Card type: SDSC or SDHC/SDXC              */
+} SD_CardInfo_t;
+
+/*
  *  Configuration structure for SD Card
  */
 typedef struct SD_Handle_t
@@ -110,7 +129,9 @@ typedef struct SD_Handle_t
     SD_States_t CardState;         /*!  < possible values from @CardState>     */
     sd_trans_modes_t transferMode; /*   < possible values from @transferMode   */
     SD_HwConfig_t hwConfig;        /*   Hardware configuration                    */
+    SD_CardInfo_t cardInfo;        /*   Card-specific information                 */
     SPI_Handle_t spiHandle;        /*   SPI handle storage (for SPI mode)         */
+    SDIO_Handle_t sdioHandle;      /*   SDIO handle storage (for SDIO mode)       */
     SD_SpiConfig_t spiConfig;      /*   SPI-specific configuration (static storage) */
     SD_SpiConfig_t* pSpiConfig;    /*   Pointer to spiConfig (NULL for SDIO mode) */
 } SD_Handle_t;
