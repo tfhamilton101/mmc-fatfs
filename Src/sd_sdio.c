@@ -145,20 +145,27 @@ int init_card(SD_Handle_t* pSDHandle)
     
     pSDHandle->CardState = SD_STATE_INIT;
     
-    /* Initialize SDIO peripheral */
+    /* Configure SDIO peripheral for initialization */
+    /* Note: pSDIOHandle->pSDIOx and pHwHandle are already set by SD_Init_Hardware_SDIO() */
     /* Configure for 400kHz initialization clock, 1-bit bus, no hardware flow control */
-    pSDIOHandle->pSDIOx = SDIO;
     pSDIOHandle->SDIOConfig.ClockDiv = 118;  /* 48MHz / (118+2) = 400kHz */
     pSDIOHandle->SDIOConfig.BusWidth = SDIO_BUS_WIDTH_1BIT;
     pSDIOHandle->SDIOConfig.ClockEdge = SDIO_CLK_EDGE_RISING;
     pSDIOHandle->SDIOConfig.ClockBypass = DISABLE;
     pSDIOHandle->SDIOConfig.PowerSave = DISABLE;
     pSDIOHandle->SDIOConfig.HardwareFlowControl = DISABLE;
-    pSDIOHandle->DMAConfig.RxBufDmaConfig = DISABLE;
-    pSDIOHandle->DMAConfig.TxBufDmaConfig = DISABLE;
     
-    /* Store SDIO handle pointer in SD handle */
-    pSDHandle->hwConfig.pHwHandle = pSDIOHandle;
+    /* Configure DMA based on transfer mode */
+    if (pSDHandle->transferMode == SD_TRANSFER_DMA)
+    {
+        pSDIOHandle->DMAConfig.RxBufDmaConfig = ENABLE;
+        pSDIOHandle->DMAConfig.TxBufDmaConfig = ENABLE;
+    }
+    else
+    {
+        pSDIOHandle->DMAConfig.RxBufDmaConfig = DISABLE;
+        pSDIOHandle->DMAConfig.TxBufDmaConfig = DISABLE;
+    }
     
     /* Initialize SDIO peripheral */
     SDIO_Init(pSDIOHandle);

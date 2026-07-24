@@ -144,8 +144,18 @@ typedef struct SD_Handle_t
 int SD_Init(SD_Handle_t* pSDHandle);
 
 /*** Hardware Init Functions ***/
+/*
+ * Hardware initialization is mode-specific:
+ *   - SD_Init_Hardware()      : SPI mode initialization (configures SPI peripheral + GPIO)
+ *   - SD_Init_Hardware_SDIO() : SDIO mode initialization (configures SDIO GPIO only)
+ * 
+ * Board configuration files should call the appropriate init function based on the 
+ * hardware interface being used. The SDIO peripheral configuration is handled internally
+ * by the SDIO driver during SD_Init().
+ */
 void SD_Init_Timers(SD_Handle_t* pSDHandle, TIM_RegDef_t* pTIMx, irq_no_t irqNo);
 void SD_Init_Hardware(SD_Handle_t* pSDHandle, SPI_RegDef_t* pSPIx, DMA_Handle_t* pTxDma, DMA_Handle_t* pRxDma);
+void SD_Init_Hardware_SDIO(SD_Handle_t* pSDHandle);
 
 /* Read / Write function */
 /* Returns 0 on success, negative errno on failure (-EINVAL, -ETIMEDOUT, or -EIO) */
